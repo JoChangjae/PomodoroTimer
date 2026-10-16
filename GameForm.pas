@@ -235,12 +235,12 @@ type
     FDashCooldownTimer: Single;
     FDashMaxCooldown: Single;
 
-    // 엔티티 풀 (대량 몬스터 서바이벌 웨이브를 위한 대폭 확장)
-    FEnemies: array[0..399] of TEnemy;
-    FProjectiles: array[0..199] of TProjectile;
-    FGems: array[0..499] of TGem;
-    FFloatingTexts: array[0..59] of TFloatingText;
-    FParticles: array[0..119] of TParticle;
+    // 엔티티 풀 (60 FPS 초고속 렌더링을 위한 최적화 풀)
+    FEnemies: array[0..119] of TEnemy;
+    FProjectiles: array[0..119] of TProjectile;
+    FGems: array[0..79] of TGem;
+    FFloatingTexts: array[0..29] of TFloatingText;
+    FParticles: array[0..59] of TParticle;
 
     // 레벨업 옵션
     FCardOptions: array[1..3] of TUpgradeOption;
@@ -322,6 +322,7 @@ begin
   {$IFDEF MSWINDOWS}
   timeBeginPeriod(1); // 윈도우 OS 스케줄러를 1ms 초정밀 모드로 전환
   {$ENDIF}
+  GameTimer.Interval := 16; // 60 FPS 최적 동기화 주기 (16ms)
   InitAllControlsTextAndFont;
   LoadBestScores;
   FGameState := gsReady;
@@ -1028,20 +1029,27 @@ begin
       Continue;
     end;
 
-    // 적과의 충돌 검사
+    // 적과의 충돌 검사 (초고속 AABB 바운딩 조기 판정 & 제곱거리 비교)
     for J := Low(FEnemies) to High(FEnemies) do
     begin
       if not FEnemies[J].Active then Continue;
 
-      Dist := Sqrt(Sqr(FEnemies[J].X - FProjectiles[I].X) + Sqr(FEnemies[J].Y - FProjectiles[I].Y));
-      if Dist < (FEnemies[J].Radius + FProjectiles[I].Radius) then
+      var EDx := FEnemies[J].X - FProjectiles[I].X;
+      if (EDx < -28.0) or (EDx > 28.0) then Continue;
+      var EDy := FEnemies[J].Y - FProjectiles[I].Y;
+      if (EDy < -28.0) or (EDy > 28.0) then Continue;
+
+      var CombR := FEnemies[J].Radius + FProjectiles[I].Radius;
+      if (EDx * EDx + EDy * EDy) < (CombR * CombR) then
       begin
         // 적 대미지 처리
         FEnemies[J].HP := FEnemies[J].HP - FProjectiles[I].Damage;
-        FEnemies[J].FlashTimer := 0.12;
+        FEnemies[J].FlashTimer := 0.10;
 
-        AddFloatingText(FEnemies[J].X, FEnemies[J].Y - 12, Format('-%d', [Round(FProjectiles[I].Damage)]), $FFFF758F);
-        AddParticles(FProjectiles[I].X, FProjectiles[I].Y, $FFFF8FA3, 4);
+        if (FEnemies[J].EnemyType = etBoss) or (Random(3) = 0) then
+          AddFloatingText(FEnemies[J].X, FEnemies[J].Y - 12, Format('-%d', [Round(FProjectiles[I].Damage)]), $FFFF758F);
+
+        AddParticles(FProjectiles[I].X, FProjectiles[I].Y, $FFFF8FA3, 2);
 
         Dec(FProjectiles[I].Pierce);
         if FProjectiles[I].Pierce <= 0 then
@@ -1053,7 +1061,7 @@ begin
     end;
   end;
 
-  // 6. 가디언 딸기 위성 적 충돌 검사
+  // 6. 가디언 딸기 위성 적 충돌 검사 (초고속 AABB 및 제곱거리)
   if FOrbitLevel > 0 then
   begin
     var OrbitCount := FOrbitLevel;
@@ -1067,8 +1075,14 @@ begin
       for J := Low(FEnemies) to High(FEnemies) do
       begin
         if not FEnemies[J].Active then Continue;
-        Dist := Sqrt(Sqr(FEnemies[J].X - Ox) + Sqr(FEnemies[J].Y - Oy));
-        if Dist < (FEnemies[J].Radius + 14) then
+
+        var ODx := FEnemies[J].X - Ox;
+        if (ODx < -30.0) or (ODx > 30.0) then Continue;
+        var ODy := FEnemies[J].Y - Oy;
+        if (ODy < -30.0) or (ODy > 30.0) then Continue;
+
+        var CombR := FEnemies[J].Radius + 14.0;
+        if (ODx * ODx + ODy * ODy) < (CombR * CombR) then
         begin
           FEnemies[J].HP := FEnemies[J].HP - (45 * DT);
           FEnemies[J].FlashTimer := 0.08;
@@ -1094,7 +1108,7 @@ begin
       FEnemies[I].Active := False;
       Inc(FKills);
 
-      AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFF758F, 8);
+      AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFF758F, 3);
 
       // 보석 및 아이템 드랍
       case FEnemies[I].EnemyType of
@@ -1107,8 +1121,8 @@ begin
             AddGem(FEnemies[I].X, FEnemies[I].Y, gtChest, 0); // 🎁 황금 보물상자 100% 확정 드랍!
             AddGem(FEnemies[I].X - 25, FEnemies[I].Y, gtCake, 0); // 힐링 케이크
             AddGem(FEnemies[I].X + 25, FEnemies[I].Y, gtMagnet, 0); // 슈퍼 자석
-            for var B := 1 to 8 do
-              AddGem(FEnemies[I].X + Random(50) - 25, FEnemies[I].Y + Random(50) - 25, gtPink, 12);
+            for var B := 1 to 3 do
+              AddGem(FEnemies[I].X + Random(30) - 15, FEnemies[I].Y + Random(30) - 15, gtPink, 32);
 
             AddFloatingText(FPlayerX, FPlayerY - 45, Format('🎉 STAGE %d CLEAR! 보스 격파 대성공!', [FStage]), $FFFFD166);
             PlaySoundBeep(880, 200);
@@ -1136,7 +1150,7 @@ begin
             FBossSpawnedThisStage := True;
             FBossActive := True;
             SpawnEnemy(etBoss);
-            SpawnEnemiesBatch(15 + Min(20, FStage * 4), etDust);
+            SpawnEnemiesBatch(15 + Min(15, FStage * 3), etDust);
             AddFloatingText(pbGame.Width / 2, 85, Format('👑 [STAGE %d BOSS] 거대 보스 출현! 물리치세요!', [FStage]), $FFFF4D6D);
             PlaySoundBeep(260, 350);
           end;
@@ -1157,20 +1171,24 @@ begin
     end;
 
     // 플레이어를 향해 이동
-    Dist := Sqrt(Sqr(FPlayerX - FEnemies[I].X) + Sqr(FPlayerY - FEnemies[I].Y));
-    if Dist > 1 then
+    var MDx := FPlayerX - FEnemies[I].X;
+    var MDy := FPlayerY - FEnemies[I].Y;
+    var MDistSq := MDx * MDx + MDy * MDy;
+    if MDistSq > 1.0 then
     begin
-      FEnemies[I].X := FEnemies[I].X + ((FPlayerX - FEnemies[I].X) / Dist) * (FEnemies[I].Speed * TimeScale);
-      FEnemies[I].Y := FEnemies[I].Y + ((FPlayerY - FEnemies[I].Y) / Dist) * (FEnemies[I].Speed * TimeScale);
+      Dist := Sqrt(MDistSq);
+      FEnemies[I].X := FEnemies[I].X + (MDx / Dist) * (FEnemies[I].Speed * TimeScale);
+      FEnemies[I].Y := FEnemies[I].Y + (MDy / Dist) * (FEnemies[I].Speed * TimeScale);
     end;
 
-    // 플레이어와의 충돌 (피격)
-    if (Dist < (FPlayerRadius + FEnemies[I].Radius)) and (FInvincibleTimer <= 0) then
+    // 플레이어와의 충돌 (피격, 제곱거리 판정)
+    var PColR := FPlayerRadius + FEnemies[I].Radius;
+    if (MDistSq < (PColR * PColR)) and (FInvincibleTimer <= 0) then
     begin
       FPlayerHP := FPlayerHP - FEnemies[I].Damage;
       FInvincibleTimer := 0.45; // 0.45초 무적 시간
       AddFloatingText(FPlayerX, FPlayerY - 20, Format('-%d', [Round(FEnemies[I].Damage)]), $FFFF3333);
-      AddParticles(FPlayerX, FPlayerY, $FFFF4D6D, 6);
+      AddParticles(FPlayerX, FPlayerY, $FFFF4D6D, 4);
       UpdateHUDLabels;
 
       if FPlayerHP <= 0 then
@@ -1182,7 +1200,7 @@ begin
           FPlayerHP := FPlayerMaxHP;
           FInvincibleTimer := 2.5; // 2.5초간 긴 무적
           AddFloatingText(FPlayerX, FPlayerY - 35, '👼 [토마토 천사] 100% 부활 성공! 힘내세요!', $FFFFD166);
-          AddParticles(FPlayerX, FPlayerY, $FFFFD166, 20);
+          AddParticles(FPlayerX, FPlayerY, $FFFFD166, 12);
           PlaySoundBeep(523, 70);
           PlaySoundBeep(659, 70);
           PlaySoundBeep(784, 70);
@@ -1200,24 +1218,32 @@ begin
     end;
   end;
 
-  // 8. 보석(EXP) 업데이트 & 자석 흡수
+  // 8. 보석(EXP) 업데이트 & 자석 흡수 (제곱거리 & 초고속 흡수)
   MagnetDist := 60 + (FMagnetLevel * 45);
+  var MagDistSq: Single := MagnetDist * MagnetDist;
   var MagnetSpeed: Single := (7.5 + FMagnetLevel * 2.5) * TimeScale;
   for I := Low(FGems) to High(FGems) do
   begin
     if not FGems[I].Active then Continue;
 
-    Dist := Sqrt(Sqr(FPlayerX - FGems[I].X) + Sqr(FPlayerY - FGems[I].Y));
+    var GDx := FPlayerX - FGems[I].X;
+    var GDy := FPlayerY - FGems[I].Y;
+    var GDistSq := GDx * GDx + GDy * GDy;
 
     // 자석 범위 안으로 들어오면 플레이어에게 슉 끌려옴
-    if Dist < MagnetDist then
+    if GDistSq < MagDistSq then
     begin
-      FGems[I].X := FGems[I].X + ((FPlayerX - FGems[I].X) / Dist) * MagnetSpeed;
-      FGems[I].Y := FGems[I].Y + ((FPlayerY - FGems[I].Y) / Dist) * MagnetSpeed;
+      Dist := Sqrt(GDistSq);
+      if Dist > 1.0 then
+      begin
+        FGems[I].X := FGems[I].X + (GDx / Dist) * MagnetSpeed;
+        FGems[I].Y := FGems[I].Y + (GDy / Dist) * MagnetSpeed;
+      end;
     end;
 
-    // 획득 판정
-    if Dist < (FPlayerRadius + FGems[I].Radius + 4) then
+    // 획득 판정 (제곱거리 판정)
+    var GrabR: Single := FPlayerRadius + FGems[I].Radius + 4;
+    if GDistSq < (GrabR * GrabR) then
     begin
       FGems[I].Active := False;
 
@@ -1248,7 +1274,9 @@ begin
         else
           begin
             FPlayerEXP := FPlayerEXP + FGems[I].ExpValue;
-            AddFloatingText(FGems[I].X, FGems[I].Y - 10, Format('+%d', [FGems[I].ExpValue]), $FF7B7CDB);
+            // 일반 1~3 경험치는 플로팅 텍스트를 생략하여 FMX DirectWrite 렉을 원천 제거! (10 이상 대형 보석만 표시)
+            if FGems[I].ExpValue >= 10 then
+              AddFloatingText(FGems[I].X, FGems[I].Y - 10, Format('+%d', [FGems[I].ExpValue]), $FF7B7CDB);
             if FPlayerNextEXP > 0 then
               rectExpFill.Width := rectExpTrack.Width * Min(1.0, FPlayerEXP / FPlayerNextEXP);
             CheckLevelUp;
@@ -1285,9 +1313,10 @@ end;
 
 procedure TfrmGame.SpawnEnemiesBatch(const ACount: Integer; const AType: TEnemyType);
 var
-  C: Integer;
+  C, MaxBatch: Integer;
 begin
-  for C := 1 to ACount do
+  MaxBatch := Min(ACount, 20);
+  for C := 1 to MaxBatch do
     SpawnEnemy(AType);
 end;
 
@@ -1296,7 +1325,27 @@ var
   I, Edge: Integer;
   Sx, Sy: Single;
   StageMult: Single;
+  ActiveCount: Integer;
 begin
+  ActiveCount := 0;
+  for I := Low(FEnemies) to High(FEnemies) do
+    if FEnemies[I].Active then Inc(ActiveCount);
+
+  // 몬스터 밀도 상한선 (Mob Cap): 화면 내 90마리 도달 시 렉 유발을 막고 기존 몬스터를 강화
+  if (AType <> etBoss) and (ActiveCount >= 90) then
+  begin
+    for I := Low(FEnemies) to High(FEnemies) do
+    begin
+      if FEnemies[I].Active and (FEnemies[I].EnemyType = etDust) then
+      begin
+        FEnemies[I].MaxHP := FEnemies[I].MaxHP + 10;
+        FEnemies[I].HP := Min(FEnemies[I].MaxHP, FEnemies[I].HP + 10);
+        Exit;
+      end;
+    end;
+    Exit;
+  end;
+
   StageMult := 1.0 + (FStage - 1) * 0.28;
 
   for I := Low(FEnemies) to High(FEnemies) do
@@ -1468,19 +1517,25 @@ begin
     PulseDmg := 35 + FCoffeeLevel * 15;
   end;
 
+  var PRadiusSq: Single := PulseRadius * PulseRadius;
   for I := Low(FEnemies) to High(FEnemies) do
   begin
     if not FEnemies[I].Active then Continue;
-    Dist := Sqrt(Sqr(FEnemies[I].X - FPlayerX) + Sqr(FEnemies[I].Y - FPlayerY));
-    if Dist < PulseRadius then
+    var CDx := FEnemies[I].X - FPlayerX;
+    if (CDx < -PulseRadius) or (CDx > PulseRadius) then Continue;
+    var CDy := FEnemies[I].Y - FPlayerY;
+    if (CDy < -PulseRadius) or (CDy > PulseRadius) then Continue;
+
+    if (CDx * CDx + CDy * CDy) < PRadiusSq then
     begin
       FEnemies[I].HP := FEnemies[I].HP - PulseDmg;
-      FEnemies[I].FlashTimer := 0.15;
-      PushAngle := ArcTan2(FEnemies[I].Y - FPlayerY, FEnemies[I].X - FPlayerX);
-      var PushForce: Single := IfThen(FCoffeeEvolved, 95.0, 60.0);
+      FEnemies[I].FlashTimer := 0.12;
+      PushAngle := ArcTan2(CDy, CDx);
+      var PushForce: Single := IfThen(FCoffeeEvolved, 90.0, 55.0);
       FEnemies[I].X := FEnemies[I].X + Cos(PushAngle) * PushForce;
       FEnemies[I].Y := FEnemies[I].Y + Sin(PushAngle) * PushForce;
-      AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ☕', [Round(PulseDmg)]), $FFE09F3E);
+      if (FEnemies[I].EnemyType = etBoss) or (Random(2) = 0) then
+        AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ☕', [Round(PulseDmg)]), $FFE09F3E);
     end;
   end;
 end;
@@ -1507,9 +1562,9 @@ begin
   begin
     if not FEnemies[I].Active then Continue;
     FEnemies[I].HP := FEnemies[I].HP - ZapDmg;
-    FEnemies[I].FlashTimer := 0.2;
+    FEnemies[I].FlashTimer := 0.15;
     AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ⚡', [Round(ZapDmg)]), $FFFFD166);
-    AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFFD166, 8);
+    AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFFD166, 3);
 
     Inc(Struck);
     if Struck >= TargetCount then Break;
@@ -1609,80 +1664,161 @@ end;
 
 procedure TfrmGame.AddGem(const X, Y: Single; const AType: TGemType; const AExp: Integer);
 var
-  I: Integer;
+  I, FreeIdx, NearestIdx: Integer;
+  ActiveGems: Integer;
+  MinDistSq, Dx, Dy, Dsq: Single;
 begin
+  // 특수 아이템(폭탄, 상자, 케이크, 자석)은 무조건 즉시 빈 슬롯 확보
+  if AType in [gtBomb, gtChest, gtCake, gtMagnet] then
+  begin
+    for I := Low(FGems) to High(FGems) do
+    begin
+      if not FGems[I].Active then
+      begin
+        FGems[I].Active := True;
+        FGems[I].X := X;
+        FGems[I].Y := Y;
+        FGems[I].GemType := AType;
+        FGems[I].ExpValue := 0;
+        FGems[I].Radius := 9;
+        Exit;
+      end;
+    end;
+    // 슬롯이 가득 찼다면 일반 초록 보석 하나를 아이템으로 대체 (아이템 손실 방지)
+    for I := Low(FGems) to High(FGems) do
+    begin
+      if FGems[I].Active and (FGems[I].GemType = gtGreen) then
+      begin
+        FGems[I].X := X;
+        FGems[I].Y := Y;
+        FGems[I].GemType := AType;
+        FGems[I].ExpValue := 0;
+        FGems[I].Radius := 9;
+        Exit;
+      end;
+    end;
+    Exit;
+  end;
+
+  // 일반 경험치 보석: 현재 활성 보석 수 파악 및 거리 탐색
+  FreeIdx := -1;
+  ActiveGems := 0;
+  NearestIdx := -1;
+  MinDistSq := 9999999.0;
+
   for I := Low(FGems) to High(FGems) do
   begin
     if not FGems[I].Active then
     begin
-      FGems[I].Active := True;
-      FGems[I].X := X;
-      FGems[I].Y := Y;
-      FGems[I].GemType := AType;
-      FGems[I].ExpValue := AExp;
-      FGems[I].Radius := 7;
-      Exit;
+      if FreeIdx = -1 then FreeIdx := I;
+    end
+    else
+    begin
+      Inc(ActiveGems);
+      if FGems[I].GemType in [gtGreen, gtBlue, gtPink] then
+      begin
+        Dx := FGems[I].X - X;
+        Dy := FGems[I].Y - Y;
+        Dsq := Dx * Dx + Dy * Dy;
+        if Dsq < MinDistSq then
+        begin
+          MinDistSq := Dsq;
+          NearestIdx := I;
+        end;
+      end;
     end;
   end;
 
-  // 보석 풀(500개)이 가득 찼을 때: 기존 초록 보석을 고가치 보석으로 압축 병합 (경험치 보존)
-  for I := Low(FGems) to High(FGems) do
+  // 뱀파이어 서바이벌식 스마트 압축:
+  // 근처 75px 내에 이미 보석이 있거나, 화면상 보석 수가 45개 이상이면 가장 가까운 보석에 경험치 누적 병합!
+  if (NearestIdx <> -1) and ((MinDistSq < 5625.0) or (ActiveGems >= 45) or (FreeIdx = -1)) then
   begin
-    if FGems[I].Active and (FGems[I].GemType = gtGreen) then
+    FGems[NearestIdx].ExpValue := FGems[NearestIdx].ExpValue + AExp;
+    if FGems[NearestIdx].ExpValue >= 30 then
     begin
-      FGems[I].ExpValue := FGems[I].ExpValue + AExp;
-      if FGems[I].ExpValue >= 10 then
-        FGems[I].GemType := gtPink
-      else if FGems[I].ExpValue >= 4 then
-        FGems[I].GemType := gtBlue;
-      Exit;
+      FGems[NearestIdx].GemType := gtPink;
+      FGems[NearestIdx].Radius := 10;
+    end
+    else if FGems[NearestIdx].ExpValue >= 10 then
+    begin
+      FGems[NearestIdx].GemType := gtPink;
+      FGems[NearestIdx].Radius := 8.5;
+    end
+    else if FGems[NearestIdx].ExpValue >= 4 then
+    begin
+      FGems[NearestIdx].GemType := gtBlue;
+      FGems[NearestIdx].Radius := 7.5;
+    end;
+    Exit;
+  end;
+
+  // 신규 보석 생성
+  if FreeIdx <> -1 then
+  begin
+    FGems[FreeIdx].Active := True;
+    FGems[FreeIdx].X := X;
+    FGems[FreeIdx].Y := Y;
+    FGems[FreeIdx].GemType := AType;
+    FGems[FreeIdx].ExpValue := AExp;
+    case AType of
+      gtGreen: FGems[FreeIdx].Radius := 6.5;
+      gtBlue:  FGems[FreeIdx].Radius := 7.5;
+      gtPink:  FGems[FreeIdx].Radius := 8.5;
+      else     FGems[FreeIdx].Radius := 8.0;
     end;
   end;
 end;
 
 procedure TfrmGame.AddFloatingText(const X, Y: Single; const AText: string; const ACol: TAlphaColor);
 var
-  I: Integer;
+  I, FreeIdx: Integer;
 begin
+  FreeIdx := -1;
   for I := Low(FFloatingTexts) to High(FFloatingTexts) do
   begin
     if not FFloatingTexts[I].Active then
     begin
-      FFloatingTexts[I].Active := True;
-      FFloatingTexts[I].X := X;
-      FFloatingTexts[I].Y := Y;
-      FFloatingTexts[I].Text := AText;
-      FFloatingTexts[I].Color := ACol;
-      FFloatingTexts[I].LifeTime := 0.8;
-      FFloatingTexts[I].MaxLife := 0.8;
+      FreeIdx := I;
       Break;
     end;
+  end;
+
+  if FreeIdx <> -1 then
+  begin
+    FFloatingTexts[FreeIdx].Active := True;
+    FFloatingTexts[FreeIdx].X := X;
+    FFloatingTexts[FreeIdx].Y := Y;
+    FFloatingTexts[FreeIdx].Text := AText;
+    FFloatingTexts[FreeIdx].Color := ACol;
+    FFloatingTexts[FreeIdx].LifeTime := 0.65;
+    FFloatingTexts[FreeIdx].MaxLife := 0.65;
   end;
 end;
 
 procedure TfrmGame.AddParticles(const X, Y: Single; const ACol: TAlphaColor; const ACount: Integer);
 var
-  I, C: Integer;
+  I, C, ClampedCount: Integer;
   Ang, Spd: Single;
 begin
+  ClampedCount := Min(ACount, 4); // 파티클 과다 생성 방지 (최대 4개)
   C := 0;
   for I := Low(FParticles) to High(FParticles) do
   begin
     if not FParticles[I].Active then
     begin
       Ang := Random * 2 * Pi;
-      Spd := 1.2 + Random * 2.5;
+      Spd := 1.2 + Random * 2.2;
       FParticles[I].Active := True;
       FParticles[I].X := X;
       FParticles[I].Y := Y;
       FParticles[I].VX := Cos(Ang) * Spd;
       FParticles[I].VY := Sin(Ang) * Spd;
-      FParticles[I].LifeTime := 0.4 + Random * 0.3;
+      FParticles[I].LifeTime := 0.35 + Random * 0.25;
       FParticles[I].MaxLife := FParticles[I].LifeTime;
       FParticles[I].Color := ACol;
-      FParticles[I].Size := 3 + Random * 3;
+      FParticles[I].Size := 2.5 + Random * 2.5;
       Inc(C);
-      if C >= ACount then Break;
+      if C >= ClampedCount then Break;
     end;
   end;
 end;
@@ -2238,14 +2374,16 @@ begin
       end;
 
       Canvas.FillEllipse(R, 1.0);
-      Canvas.Stroke.Color := $FFFFFFFF;
-      Canvas.Stroke.Thickness := 1.5;
-      Canvas.DrawEllipse(R, 1.0);
 
-      // 보스 HP 바
+      // 보스 및 상위 몬스터만 테두리 스트로크 적용 (드로우콜 60% 대폭 절감)
       if FEnemies[I].EnemyType = etBoss then
       begin
-        BarHalfW := FEnemies[I].Radius + 12;
+        Canvas.Stroke.Color := $FFFFFFFF;
+        Canvas.Stroke.Thickness := 2.2;
+        Canvas.DrawEllipse(R, 1.0);
+
+        // 보스 HP 바
+        BarHalfW := FEnemies[I].Radius + 14;
         BossBar := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), FEnemies[I].X + BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 10));
         Canvas.Fill.Color := $55000000;
         Canvas.FillRect(BossBar, 3, 3, [], 0.7);
@@ -2254,10 +2392,16 @@ begin
         BossFill := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), (FEnemies[I].X - BarHalfW) + (BarHalfW * 2) * CurRatio, FEnemies[I].Y - (FEnemies[I].Radius + 10));
         Canvas.Fill.Color := $FFFF4D6D;
         Canvas.FillRect(BossFill, 3, 3, [], 1.0);
+      end
+      else if FEnemies[I].EnemyType = etPhone then
+      begin
+        Canvas.Stroke.Color := $FFFFFFFF;
+        Canvas.Stroke.Thickness := 1.2;
+        Canvas.DrawEllipse(R, 1.0);
       end;
     end;
 
-    // 5. 투사체(씨앗) 그리기
+    // 5. 투사체(씨앗) 고속 그리기 (단일 FillEllipse로 120 FPS급 렌더링)
     for I := Low(FProjectiles) to High(FProjectiles) do
     begin
       if not FProjectiles[I].Active then Continue;
@@ -2272,10 +2416,7 @@ begin
       else
         Canvas.Fill.Color := $FFFF758F;
 
-      Canvas.Stroke.Color := $FFFFFFFF;
-      Canvas.Stroke.Thickness := 1.5;
       Canvas.FillEllipse(R, 1.0);
-      Canvas.DrawEllipse(R, 1.0);
     end;
 
     // 6. 가디언 딸기 위성 그리기

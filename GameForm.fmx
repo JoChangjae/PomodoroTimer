@@ -494,7 +494,7 @@ object frmGame: TfrmGame
   end
   object GameTimer: TTimer
     Enabled = False
-    Interval = 10
+    Interval = 16
     OnTimer = GameTimerTick
     Left = 32
     Top = 80
