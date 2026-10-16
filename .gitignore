@@ -1,0 +1,17 @@
+# Delphi compiler binaries & build artifacts
+Win32/
+Win64/
+__history/
+*.identcache
+*.stat
+*.local
+*.dproj.local
+*.tvsconfig
+*.skincfg
+*.dcu
+*.~*
+*.optset
+
+# Runtime user settings & logs
+*_data.ini
+*.log

@@ -1,0 +1,502 @@
+object frmGame: TfrmGame
+  Left = 0
+  Top = 0
+  BorderStyle = Single
+  Caption = 'Pomodoro Survivors'
+  ClientHeight = 720
+  ClientWidth = 620
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  OnClose = FormClose
+  OnKeyDown = FormKeyDown
+  OnKeyUp = FormKeyUp
+  DesignerMasterStyle = 0
+  object rectRoot: TRectangle
+    Align = Client
+    Fill.Color = xFFFFFAF4
+    HitTest = False
+    Size.Width = 620.000000000000000000
+    Size.Height = 720.000000000000000000
+    Size.PlatformDefault = False
+    Stroke.Kind = None
+    object pbGame: TPaintBox
+      Align = Client
+      Size.Width = 620.000000000000000000
+      Size.Height = 654.000000000000000000
+      Size.PlatformDefault = False
+      OnMouseDown = pbGameMouseDown
+      OnMouseMove = pbGameMouseMove
+      OnPaint = pbGamePaint
+    end
+    object lytTopHUD: TLayout
+      Align = Top
+      Margins.Left = 14.000000000000000000
+      Margins.Top = 10.000000000000000000
+      Margins.Right = 14.000000000000000000
+      Position.X = 14.000000000000000000
+      Position.Y = 10.000000000000000000
+      Size.Width = 592.000000000000000000
+      Size.Height = 56.000000000000000000
+      Size.PlatformDefault = False
+      object rectExpTrack: TRectangle
+        Align = Top
+        Fill.Color = xFFF0E7DE
+        Size.Width = 592.000000000000000000
+        Size.Height = 12.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Kind = None
+        XRadius = 6.000000000000000000
+        YRadius = 6.000000000000000000
+        object rectExpFill: TRectangle
+          Align = Left
+          Fill.Color = xFFFF758F
+          Size.Width = 0.000000000000000000
+          Size.Height = 12.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Kind = None
+        end
+      end
+      object lytHUDLabels: TLayout
+        Align = Client
+        Margins.Top = 6.000000000000000000
+        Size.Width = 592.000000000000000000
+        Size.Height = 38.000000000000000000
+        Size.PlatformDefault = False
+        object lblLevelBadge: TLabel
+          Position.Y = 6.000000000000000000
+          Size.Width = 150.000000000000000000
+          Size.Height = 26.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 14.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFFFF758F
+          Text = 'Lv.1'
+        end
+        object lblSurvivalTime: TLabel
+          Position.X = 160.000000000000000000
+          Position.Y = 4.000000000000000000
+          Size.Width = 140.000000000000000000
+          Size.Height = 28.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 18.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFF4A3E3D
+          TextSettings.HorzAlign = Center
+          Text = '00:00'
+        end
+        object lblKillScore: TLabel
+          Position.X = 320.000000000000000000
+          Position.Y = 6.000000000000000000
+          Size.Width = 140.000000000000000000
+          Size.Height = 26.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 13.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFF8C7A78
+          Text = 'Kills 0'
+        end
+        object rectBtnPause: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = claWhite
+          Position.X = 504.000000000000000000
+          Position.Y = 2.000000000000000000
+          Size.Width = 38.000000000000000000
+          Size.Height = 32.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.200000047683716000
+          XRadius = 8.000000000000000000
+          YRadius = 8.000000000000000000
+          OnClick = rectBtnPauseClick
+          object lblBtnPause: TLabel
+            Align = Client
+            Size.Width = 38.000000000000000000
+            Size.Height = 32.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 13.000000000000000000
+            TextSettings.FontColor = xFF4A3E3D
+            TextSettings.HorzAlign = Center
+            Text = 'P'
+          end
+        end
+        object rectBtnCloseGame: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = claWhite
+          Position.X = 550.000000000000000000
+          Position.Y = 2.000000000000000000
+          Size.Width = 38.000000000000000000
+          Size.Height = 32.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.200000047683716000
+          XRadius = 8.000000000000000000
+          YRadius = 8.000000000000000000
+          OnClick = rectBtnCloseGameClick
+          object lblBtnCloseGame: TLabel
+            Align = Client
+            Size.Width = 38.000000000000000000
+            Size.Height = 32.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 13.000000000000000000
+            TextSettings.FontColor = xFF8C7A78
+            TextSettings.HorzAlign = Center
+            Text = 'X'
+          end
+        end
+      end
+    end
+    object lytLevelUpModal: TLayout
+      Align = Contents
+      HitTest = True
+      Size.Width = 620.000000000000000000
+      Size.Height = 720.000000000000000000
+      Size.PlatformDefault = False
+      Visible = False
+      object rectLevelUpDim: TRectangle
+        Align = Contents
+        Fill.Color = xAA2B2438
+        Size.Width = 620.000000000000000000
+        Size.Height = 720.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Kind = None
+      end
+      object rectLevelUpBox: TRectangle
+        Anchors = []
+        Fill.Color = claWhite
+        Position.X = 70.000000000000000000
+        Position.Y = 110.000000000000000000
+        Size.Width = 480.000000000000000000
+        Size.Height = 500.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Color = xFFF2E2D6
+        Stroke.Thickness = 2.000000000000000000
+        XRadius = 24.000000000000000000
+        YRadius = 24.000000000000000000
+        object lblLevelUpTitle: TLabel
+          Position.X = 20.000000000000000000
+          Position.Y = 22.000000000000000000
+          Size.Width = 440.000000000000000000
+          Size.Height = 32.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 20.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFFFF758F
+          TextSettings.HorzAlign = Center
+          Text = 'Level Up!'
+        end
+        object lblLevelUpSubtitle: TLabel
+          Position.X = 20.000000000000000000
+          Position.Y = 56.000000000000000000
+          Size.Width = 440.000000000000000000
+          Size.Height = 22.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.FontColor = xFF8C7A78
+          TextSettings.HorzAlign = Center
+          Text = 'Choose an upgrade'
+        end
+        object rectCard1: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = xFFFFFAF4
+          Position.X = 24.000000000000000000
+          Position.Y = 96.000000000000000000
+          Size.Width = 432.000000000000000000
+          Size.Height = 114.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.799999952316284000
+          XRadius = 16.000000000000000000
+          YRadius = 16.000000000000000000
+          OnClick = rectCard1Click
+          object lblCardIcon1: TLabel
+            HitTest = False
+            Position.X = 16.000000000000000000
+            Position.Y = 22.000000000000000000
+            Size.Width = 50.000000000000000000
+            Size.Height = 50.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 28.000000000000000000
+            TextSettings.HorzAlign = Center
+            Text = 'S'
+          end
+          object lblCardTitle1: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 260.000000000000000000
+            Size.Height = 26.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 15.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFF4A3E3D
+            Text = 'Upgrade 1'
+          end
+          object lblCardBadge1: TLabel
+            HitTest = False
+            Position.X = 340.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 76.000000000000000000
+            Size.Height = 24.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 11.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFFFF758F
+            TextSettings.HorzAlign = Center
+            Text = 'NEW'
+          end
+          object lblCardDesc1: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 46.000000000000000000
+            Size.Width = 340.000000000000000000
+            Size.Height = 54.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.FontColor = xFF8C7A78
+            Text = 'Description of upgrade 1'
+          end
+        end
+        object rectCard2: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = xFFFFFAF4
+          Position.X = 24.000000000000000000
+          Position.Y = 224.000000000000000000
+          Size.Width = 432.000000000000000000
+          Size.Height = 114.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.799999952316284000
+          XRadius = 16.000000000000000000
+          YRadius = 16.000000000000000000
+          OnClick = rectCard2Click
+          object lblCardIcon2: TLabel
+            HitTest = False
+            Position.X = 16.000000000000000000
+            Position.Y = 22.000000000000000000
+            Size.Width = 50.000000000000000000
+            Size.Height = 50.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 28.000000000000000000
+            TextSettings.HorzAlign = Center
+            Text = 'O'
+          end
+          object lblCardTitle2: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 260.000000000000000000
+            Size.Height = 26.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 15.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFF4A3E3D
+            Text = 'Upgrade 2'
+          end
+          object lblCardBadge2: TLabel
+            HitTest = False
+            Position.X = 340.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 76.000000000000000000
+            Size.Height = 24.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 11.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFFFF758F
+            TextSettings.HorzAlign = Center
+            Text = 'NEW'
+          end
+          object lblCardDesc2: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 46.000000000000000000
+            Size.Width = 340.000000000000000000
+            Size.Height = 54.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.FontColor = xFF8C7A78
+            Text = 'Description of upgrade 2'
+          end
+        end
+        object rectCard3: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = xFFFFFAF4
+          Position.X = 24.000000000000000000
+          Position.Y = 352.000000000000000000
+          Size.Width = 432.000000000000000000
+          Size.Height = 114.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.799999952316284000
+          XRadius = 16.000000000000000000
+          YRadius = 16.000000000000000000
+          OnClick = rectCard3Click
+          object lblCardIcon3: TLabel
+            HitTest = False
+            Position.X = 16.000000000000000000
+            Position.Y = 22.000000000000000000
+            Size.Width = 50.000000000000000000
+            Size.Height = 50.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 28.000000000000000000
+            TextSettings.HorzAlign = Center
+            Text = 'C'
+          end
+          object lblCardTitle3: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 260.000000000000000000
+            Size.Height = 26.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 15.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFF4A3E3D
+            Text = 'Upgrade 3'
+          end
+          object lblCardBadge3: TLabel
+            HitTest = False
+            Position.X = 340.000000000000000000
+            Position.Y = 16.000000000000000000
+            Size.Width = 76.000000000000000000
+            Size.Height = 24.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 11.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = xFFFF758F
+            TextSettings.HorzAlign = Center
+            Text = 'NEW'
+          end
+          object lblCardDesc3: TLabel
+            HitTest = False
+            Position.X = 76.000000000000000000
+            Position.Y = 46.000000000000000000
+            Size.Width = 340.000000000000000000
+            Size.Height = 54.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.FontColor = xFF8C7A78
+            Text = 'Description of upgrade 3'
+          end
+        end
+      end
+    end
+    object lytGameOverModal: TLayout
+      Align = Contents
+      HitTest = True
+      Size.Width = 620.000000000000000000
+      Size.Height = 720.000000000000000000
+      Size.PlatformDefault = False
+      Visible = False
+      object rectGameOverDim: TRectangle
+        Align = Contents
+        Fill.Color = xCC2B2438
+        Size.Width = 620.000000000000000000
+        Size.Height = 720.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Kind = None
+      end
+      object rectGameOverBox: TRectangle
+        Anchors = []
+        Fill.Color = claWhite
+        Position.X = 90.000000000000000000
+        Position.Y = 160.000000000000000000
+        Size.Width = 440.000000000000000000
+        Size.Height = 400.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Color = xFFF2E2D6
+        Stroke.Thickness = 2.000000000000000000
+        XRadius = 24.000000000000000000
+        YRadius = 24.000000000000000000
+        object lblGameOverTitle: TLabel
+          Position.X = 20.000000000000000000
+          Position.Y = 28.000000000000000000
+          Size.Width = 400.000000000000000000
+          Size.Height = 36.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 22.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFFFF758F
+          TextSettings.HorzAlign = Center
+          Text = 'Session Complete'
+        end
+        object lblGameOverStats: TLabel
+          Position.X = 24.000000000000000000
+          Position.Y = 82.000000000000000000
+          Size.Width = 392.000000000000000000
+          Size.Height = 60.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 14.000000000000000000
+          TextSettings.FontColor = xFF4A3E3D
+          TextSettings.HorzAlign = Center
+          Text = 'Survival Stats'
+        end
+        object lblGameOverBest: TLabel
+          Position.X = 24.000000000000000000
+          Position.Y = 160.000000000000000000
+          Size.Width = 392.000000000000000000
+          Size.Height = 50.000000000000000000
+          Size.PlatformDefault = False
+          TextSettings.Font.Size = 13.000000000000000000
+          TextSettings.Font.StyleExt = {00070000000000000004000000}
+          TextSettings.FontColor = xFF52B788
+          TextSettings.HorzAlign = Center
+          Text = 'Best Record'
+        end
+        object rectBtnRestart: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = xFFFF758F
+          Position.X = 70.000000000000000000
+          Position.Y = 240.000000000000000000
+          Size.Width = 300.000000000000000000
+          Size.Height = 52.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Kind = None
+          XRadius = 14.000000000000000000
+          YRadius = 14.000000000000000000
+          OnClick = rectBtnRestartClick
+          object lblBtnRestart: TLabel
+            Align = Client
+            Size.Width = 300.000000000000000000
+            Size.Height = 52.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 16.000000000000000000
+            TextSettings.Font.StyleExt = {00070000000000000004000000}
+            TextSettings.FontColor = claWhite
+            TextSettings.HorzAlign = Center
+            Text = 'Play Again'
+          end
+        end
+        object rectBtnReturnTimer: TRectangle
+          Cursor = crHandPoint
+          Fill.Color = xFFF7F2EE
+          Position.X = 70.000000000000000000
+          Position.Y = 308.000000000000000000
+          Size.Width = 300.000000000000000000
+          Size.Height = 48.000000000000000000
+          Size.PlatformDefault = False
+          Stroke.Color = xFFF2E2D6
+          Stroke.Thickness = 1.200000047683716000
+          XRadius = 14.000000000000000000
+          YRadius = 14.000000000000000000
+          OnClick = rectBtnReturnTimerClick
+          object lblBtnReturnTimer: TLabel
+            Align = Client
+            Size.Width = 300.000000000000000000
+            Size.Height = 48.000000000000000000
+            Size.PlatformDefault = False
+            TextSettings.Font.Size = 14.000000000000000000
+            TextSettings.FontColor = xFF8C7A78
+            TextSettings.HorzAlign = Center
+            Text = 'Back to Pomodoro'
+          end
+        end
+      end
+    end
+  end
+  object GameTimer: TTimer
+    Enabled = False
+    Interval = 10
+    OnTimer = GameTimerTick
+    Left = 32
+    Top = 80
+  end
+end
