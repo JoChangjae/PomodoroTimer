@@ -1,4 +1,4 @@
-﻿unit GameForm;
+unit GameForm;
 
 interface
 
@@ -221,15 +221,22 @@ type
     // 레벨업 옵션
     FCardOptions: array[1..3] of TUpgradeOption;
 
+    // 스테이지 및 보스 관리
+    FStage: Integer;
+    FStageKills: Integer;
+    FStageTargetKills: Integer;
+    FBossActive: Boolean;
+    FBossSpawnedThisStage: Boolean;
+
     // 스폰 타이머 & 대규모 웨이브 관리
     FSpawnTimer: Single;
-    FBossSpawned: Boolean;
     FLastWaveTriggerSec: Integer;
 
     // 최고 기록
     FBestSurvivalSeconds: Integer;
     FBestKills: Integer;
     FBestLevel: Integer;
+    FBestStage: Integer;
 
     // 초정밀 프레임 타이머 및 HUD 갱신 캐시
     FStopwatch: TStopwatch;
@@ -237,6 +244,9 @@ type
     FLastDisplayKills: Integer;
     FLastDisplayHP: Integer;
     FLastDisplayLevel: Integer;
+    FLastDisplayStage: Integer;
+    FLastDisplayStageKills: Integer;
+    FLastDisplayBossActive: Boolean;
 
     procedure InitAllControlsTextAndFont;
     procedure UpdateHUDLabels;
@@ -354,10 +364,18 @@ begin
     lblLevelBadge.Text := Format('Lv.%d 🌱  💖 %d/%d', [FPlayerLevel, CurHP, Round(FPlayerMaxHP)]);
   end;
 
-  if FKills <> FLastDisplayKills then
+  if (FKills <> FLastDisplayKills) or (FStage <> FLastDisplayStage) or
+     (FStageKills <> FLastDisplayStageKills) or (FBossActive <> FLastDisplayBossActive) then
   begin
     FLastDisplayKills := FKills;
-    lblKillScore.Text := Format('👾 %d마리', [FKills]);
+    FLastDisplayStage := FStage;
+    FLastDisplayStageKills := FStageKills;
+    FLastDisplayBossActive := FBossActive;
+
+    if FBossActive then
+      lblKillScore.Text := Format('👑 STAGE %d BOSS 출현! (👾 %d)', [FStage, FKills])
+    else
+      lblKillScore.Text := Format('STAGE %d [%d/%d]  👾 %d', [FStage, FStageKills, FStageTargetKills, FKills]);
   end;
 end;
 
@@ -378,6 +396,7 @@ begin
       FBestSurvivalSeconds := Ini.ReadInteger('Survivor', 'BestSurvivalSeconds', 0);
       FBestKills := Ini.ReadInteger('Survivor', 'BestKills', 0);
       FBestLevel := Ini.ReadInteger('Survivor', 'BestLevel', 1);
+      FBestStage := Ini.ReadInteger('Survivor', 'BestStage', 1);
     finally
       Ini.Free;
     end;
@@ -397,6 +416,7 @@ begin
       Ini.WriteInteger('Survivor', 'BestSurvivalSeconds', FBestSurvivalSeconds);
       Ini.WriteInteger('Survivor', 'BestKills', FBestKills);
       Ini.WriteInteger('Survivor', 'BestLevel', FBestLevel);
+      Ini.WriteInteger('Survivor', 'BestStage', FBestStage);
     finally
       Ini.Free;
     end;
@@ -460,8 +480,14 @@ begin
   FAttackSpeedMultiplier := 1.0;
 
   FSpawnTimer := 0;
-  FBossSpawned := False;
   FLastWaveTriggerSec := 0;
+
+  // 스테이지 및 보스 상태 초기화
+  FStage := 1;
+  FStageKills := 0;
+  FStageTargetKills := 35; // 첫 스테이지는 35마리 처치 시 보스 출현!
+  FBossActive := False;
+  FBossSpawnedThisStage := False;
 
   // 엔티티 풀 초기화
   for I := Low(FEnemies) to High(FEnemies) do FEnemies[I].Active := False;
@@ -475,6 +501,9 @@ begin
   FLastDisplayKills := -1;
   FLastDisplayHP := -1;
   FLastDisplayLevel := -1;
+  FLastDisplayStage := -1;
+  FLastDisplayStageKills := -1;
+  FLastDisplayBossActive := False;
   UpdateHUDLabels;
   lblSurvivalTime.Text := '00:00';
 
@@ -719,14 +748,10 @@ begin
         end;
       90:
         begin
-          if not FBossSpawned then
-          begin
-            FBossSpawned := True;
-            SpawnEnemy(etBoss);
-            SpawnEnemiesBatch(30, etDust);
-            AddFloatingText(pbGame.Width / 2, pbGame.Height / 2 - 40, '👑 [보스 강림] 거대 게으름 보스 출현! ⚠️', $FFFF4D6D);
-            PlaySoundBeep(250, 300);
-          end;
+          SpawnEnemiesBatch(20, etSleepy);
+          SpawnEnemiesBatch(20, etPhone);
+          AddFloatingText(FPlayerX, FPlayerY - 45, '⚠️ [정예 공습] 졸음과 알림의 대규모 파상공격! (40마리)', $FFFF4D6D);
+          PlaySoundBeep(250, 250);
         end;
       else
         if CurrentSec > 90 then
@@ -865,11 +890,7 @@ begin
     begin
       FEnemies[I].Active := False;
       Inc(FKills);
-      if FKills <> FLastDisplayKills then
-      begin
-        FLastDisplayKills := FKills;
-        lblKillScore.Text := Format('👾 %d마리', [FKills]);
-      end;
+
       AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFF758F, 8);
 
       // 보석 및 아이템 드랍
@@ -879,19 +900,50 @@ begin
         etPhone:  AddGem(FEnemies[I].X, FEnemies[I].Y, gtPink, 8);
         etBoss:
           begin
-            AddGem(FEnemies[I].X - 20, FEnemies[I].Y, gtCake, 0); // 힐링 케이크
-            AddGem(FEnemies[I].X + 20, FEnemies[I].Y, gtMagnet, 0); // 자석
-            for var B := 1 to 5 do
-              AddGem(FEnemies[I].X + Random(40) - 20, FEnemies[I].Y + Random(40) - 20, gtPink, 10);
-            AddFloatingText(FEnemies[I].X, FEnemies[I].Y, '🎉 보스 격파 대성공!', $FFFFD166);
+            FBossActive := False;
+            AddGem(FEnemies[I].X - 25, FEnemies[I].Y, gtCake, 0); // 힐링 케이크
+            AddGem(FEnemies[I].X + 25, FEnemies[I].Y, gtMagnet, 0); // 슈퍼 자석
+            for var B := 1 to 8 do
+              AddGem(FEnemies[I].X + Random(50) - 25, FEnemies[I].Y + Random(50) - 25, gtPink, 12);
+
+            AddFloatingText(FPlayerX, FPlayerY - 45, Format('🎉 STAGE %d CLEAR! 보스 격파 대성공!', [FStage]), $FFFFD166);
             PlaySoundBeep(880, 200);
+
+            // 다음 스테이지 진입 & 난이도 상승
+            Inc(FStage);
+            FStageKills := 0;
+            FStageTargetKills := 35 + (FStage - 1) * 15;
+            FBossSpawnedThisStage := False;
+
+            AddFloatingText(pbGame.Width / 2, pbGame.Height / 2 - 20, Format('⚔️ STAGE %d START! 더 강한 적들이 등장합니다!', [FStage]), $FFFF758F);
+            PlaySoundBeep(587, 150);
+            UpdateHUDLabels;
           end;
       end;
 
-      // 3% 확률로 힐링 딸기 케이크 드랍
-      if (FEnemies[I].EnemyType <> etBoss) and (Random(100) < 3) then
-        AddGem(FEnemies[I].X + 8, FEnemies[I].Y + 8, gtCake, 0);
+      // 일반 적 처치 시 스테이지 카운트 증가 및 보스 소환 판정
+      if FEnemies[I].EnemyType <> etBoss then
+      begin
+        if not FBossSpawnedThisStage then
+        begin
+          Inc(FStageKills);
+          if FStageKills >= FStageTargetKills then
+          begin
+            FBossSpawnedThisStage := True;
+            FBossActive := True;
+            SpawnEnemy(etBoss);
+            SpawnEnemiesBatch(15 + Min(20, FStage * 4), etDust);
+            AddFloatingText(pbGame.Width / 2, 85, Format('👑 [STAGE %d BOSS] 거대 보스 출현! 물리치세요!', [FStage]), $FFFF4D6D);
+            PlaySoundBeep(260, 350);
+          end;
+        end;
 
+        // 3% 확률로 힐링 딸기 케이크 드랍
+        if Random(100) < 3 then
+          AddGem(FEnemies[I].X + 8, FEnemies[I].Y + 8, gtCake, 0);
+      end;
+
+      UpdateHUDLabels;
       Continue;
     end;
 
@@ -1013,7 +1065,10 @@ procedure TfrmGame.SpawnEnemy(const AType: TEnemyType);
 var
   I, Edge: Integer;
   Sx, Sy: Single;
+  StageMult: Single;
 begin
+  StageMult := 1.0 + (FStage - 1) * 0.28;
+
   for I := Low(FEnemies) to High(FEnemies) do
   begin
     if not FEnemies[I].Active then
@@ -1037,34 +1092,34 @@ begin
         etDust: // 잡생각 먼지 구름 (대량 출현, 팝콘 터지듯 시원하게 처치!)
           begin
             FEnemies[I].Radius := 11;
-            FEnemies[I].Speed := 1.7 + Random * 0.4;
-            FEnemies[I].MaxHP := 10 + (FSurvivalSeconds * 0.12);
+            FEnemies[I].Speed := (1.7 + Random * 0.4) * Min(1.35, 1.0 + (FStage - 1) * 0.04);
+            FEnemies[I].MaxHP := (10 + (FSurvivalSeconds * 0.12)) * StageMult;
             FEnemies[I].HP := FEnemies[I].MaxHP;
-            FEnemies[I].Damage := 4;
+            FEnemies[I].Damage := 4 + (FStage - 1) * 1.5;
           end;
         etSleepy: // 졸음 몬스터
           begin
             FEnemies[I].Radius := 15;
-            FEnemies[I].Speed := 1.1 + Random * 0.3;
-            FEnemies[I].MaxHP := 24 + (FSurvivalSeconds * 0.22);
+            FEnemies[I].Speed := (1.1 + Random * 0.3) * Min(1.35, 1.0 + (FStage - 1) * 0.04);
+            FEnemies[I].MaxHP := (24 + (FSurvivalSeconds * 0.22)) * StageMult;
             FEnemies[I].HP := FEnemies[I].MaxHP;
-            FEnemies[I].Damage := 8;
+            FEnemies[I].Damage := 8 + (FStage - 1) * 2.0;
           end;
         etPhone: // 스마트폰 알림 유령
           begin
             FEnemies[I].Radius := 14;
-            FEnemies[I].Speed := 2.1 + Random * 0.3;
-            FEnemies[I].MaxHP := 38 + (FSurvivalSeconds * 0.35);
+            FEnemies[I].Speed := (2.1 + Random * 0.3) * Min(1.45, 1.0 + (FStage - 1) * 0.05);
+            FEnemies[I].MaxHP := (38 + (FSurvivalSeconds * 0.35)) * StageMult;
             FEnemies[I].HP := FEnemies[I].MaxHP;
-            FEnemies[I].Damage := 12;
+            FEnemies[I].Damage := 12 + (FStage - 1) * 3.0;
           end;
-        etBoss: // 거대 게으름 보스
+        etBoss: // 거대 보스 (스테이지마다 체력/공격력/크기 대폭 강화!)
           begin
-            FEnemies[I].Radius := 38;
-            FEnemies[I].Speed := 0.85;
-            FEnemies[I].MaxHP := 550;
+            FEnemies[I].Radius := 38 + Min(16, (FStage - 1) * 3);
+            FEnemies[I].Speed := 0.85 + Min(0.40, (FStage - 1) * 0.08);
+            FEnemies[I].MaxHP := 480 + (FStage - 1) * 360;
             FEnemies[I].HP := FEnemies[I].MaxHP;
-            FEnemies[I].Damage := 24;
+            FEnemies[I].Damage := 22 + (FStage - 1) * 6;
           end;
       end;
       Break;
@@ -1539,20 +1594,25 @@ begin
     FBestSurvivalSeconds := Secs;
     IsNewRecord := True;
   end;
+  if FStage > FBestStage then
+  begin
+    FBestStage := FStage;
+    IsNewRecord := True;
+  end;
   if FKills > FBestKills then FBestKills := FKills;
   if FPlayerLevel > FBestLevel then FBestLevel := FPlayerLevel;
   SaveBestScores;
 
   lblGameOverStats.Text := Format(
-    '생존 시간: %0.2d:%0.2d' + sLineBreak +
+    '도달 스테이지: STAGE %d | 생존 시간: %0.2d:%0.2d' + sLineBreak +
     '퇴치한 방해 몬스터: %d마리 | 최종 레벨: Lv.%d',
-    [Secs div 60, Secs mod 60, FKills, FPlayerLevel]
+    [FStage, Secs div 60, Secs mod 60, FKills, FPlayerLevel]
   );
 
   if IsNewRecord then
-    lblGameOverBest.Text := Format('🎉 NEW RECORD! 역대 최고 생존 기록 갱신! (%0.2d:%0.2d)', [Secs div 60, Secs mod 60])
+    lblGameOverBest.Text := Format('🎉 NEW RECORD! STAGE %d 달성 & 역대 최고 기록 갱신!', [FStage])
   else
-    lblGameOverBest.Text := Format('🏆 역대 최고 기록: %0.2d:%0.2d (퇴치 %d마리, Lv.%d)', [FBestSurvivalSeconds div 60, FBestSurvivalSeconds mod 60, FBestKills, FBestLevel]);
+    lblGameOverBest.Text := Format('🏆 최고 기록: STAGE %d, %0.2d:%0.2d (퇴치 %d마리, Lv.%d)', [FBestStage, FBestSurvivalSeconds div 60, FBestSurvivalSeconds mod 60, FBestKills, FBestLevel]);
 
   lytGameOverModal.Visible := True;
   lytGameOverModal.BringToFront;
@@ -1696,7 +1756,14 @@ begin
           etDust:   Canvas.Fill.Color := $FFD6C7E8; // 연보라 잡생각 먼지
           etSleepy: Canvas.Fill.Color := $FFBEE1E6; // 포근한 하늘빛 졸음
           etPhone:  Canvas.Fill.Color := $FFFFC2D1; // 분홍빛 스마트폰 유령
-          etBoss:   Canvas.Fill.Color := $FF7B7CDB; // 거대 게으름 보스
+          etBoss:   // 거대 보스 (스테이지별 테마 색상)
+            case FStage of
+              1: Canvas.Fill.Color := $FF7B7CDB; // 1스테이지: 라벤더 퍼플 보스
+              2: Canvas.Fill.Color := $FF3A86FF; // 2스테이지: 심해 네이비 블루 보스
+              3: Canvas.Fill.Color := $FFFF006E; // 3스테이지: 네온 마젠타 핑크 보스
+              4: Canvas.Fill.Color := $FFFF595E; // 4스테이지: 분노의 코랄 레드 보스
+              else Canvas.Fill.Color := $FF8338EC; // 5스테이지+: 다크 사이버 퍼플
+            end;
         end;
       end;
 
@@ -1708,10 +1775,13 @@ begin
       // 보스 HP 바
       if FEnemies[I].EnemyType = etBoss then
       begin
-        var BossBar := TRectF.Create(FEnemies[I].X - 35, FEnemies[I].Y - 45, FEnemies[I].X + 35, FEnemies[I].Y - 39);
-        Canvas.Fill.Color := $44000000;
-        Canvas.FillRect(BossBar, 3, 3, [], 0.6);
-        var BossFill := TRectF.Create(FEnemies[I].X - 35, FEnemies[I].Y - 45, (FEnemies[I].X - 35) + 70 * (FEnemies[I].HP / FEnemies[I].MaxHP), FEnemies[I].Y - 39);
+        var BarHalfW := FEnemies[I].Radius + 12;
+        var BossBar := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), FEnemies[I].X + BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 10));
+        Canvas.Fill.Color := $55000000;
+        Canvas.FillRect(BossBar, 3, 3, [], 0.7);
+
+        var CurRatio := Max(0.0, Min(1.0, FEnemies[I].HP / FEnemies[I].MaxHP));
+        var BossFill := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), (FEnemies[I].X - BarHalfW) + (BarHalfW * 2) * CurRatio, FEnemies[I].Y - (FEnemies[I].Radius + 10));
         Canvas.Fill.Color := $FFFF4D6D;
         Canvas.FillRect(BossFill, 3, 3, [], 1.0);
       end;

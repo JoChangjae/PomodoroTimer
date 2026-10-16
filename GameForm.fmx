@@ -76,9 +76,9 @@ object frmGame: TfrmGame
           Text = 'Lv.1'
         end
         object lblSurvivalTime: TLabel
-          Position.X = 160.000000000000000000
+          Position.X = 145.000000000000000000
           Position.Y = 4.000000000000000000
-          Size.Width = 140.000000000000000000
+          Size.Width = 100.000000000000000000
           Size.Height = 28.000000000000000000
           Size.PlatformDefault = False
           TextSettings.Font.Size = 18.000000000000000000
@@ -88,9 +88,9 @@ object frmGame: TfrmGame
           Text = '00:00'
         end
         object lblKillScore: TLabel
-          Position.X = 320.000000000000000000
+          Position.X = 250.000000000000000000
           Position.Y = 6.000000000000000000
-          Size.Width = 140.000000000000000000
+          Size.Width = 245.000000000000000000
           Size.Height = 26.000000000000000000
           Size.PlatformDefault = False
           TextSettings.Font.Size = 13.000000000000000000
