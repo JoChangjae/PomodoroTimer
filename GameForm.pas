@@ -1721,10 +1721,15 @@ begin
 end;
 
 procedure TfrmGame.ShowLevelUpModal;
+const
+  BASE_SKILLS: array[0..7] of TUpgradeType = (
+    utSeedCount, utAttackSpeed, utOrbitStrawberry, utCoffeePulse,
+    utVitaminZap, utMoveSpeed, utMaxHPHeal, utMagnetRadius
+  );
 var
   Pool: array of TUpgradeType;
   Chosen: array[1..3] of TUpgradeType;
-  I, J, PickIdx: Integer;
+  I, J, B, PickIdx: Integer;
   Exists: Boolean;
 
   function GetUpgradeInfo(const AType: TUpgradeType): TUpgradeOption;
@@ -1875,14 +1880,10 @@ begin
   end;
 
   // 일반 스킬 추가
-  var BaseSkills: array[0..7] of TUpgradeType := (
-    utSeedCount, utAttackSpeed, utOrbitStrawberry, utCoffeePulse,
-    utVitaminZap, utMoveSpeed, utMaxHPHeal, utMagnetRadius
-  );
-  for var B := 0 to 7 do
+  for B := 0 to 7 do
   begin
     SetLength(Pool, Length(Pool) + 1);
-    Pool[High(Pool)] := BaseSkills[B];
+    Pool[High(Pool)] := BASE_SKILLS[B];
   end;
 
   // 중복 없는 3가지 랜덤 선택
@@ -2101,9 +2102,12 @@ end;
 
 procedure TfrmGame.pbGamePaint(Sender: TObject; Canvas: TCanvas);
 var
-  I: Integer;
-  R: TRectF;
-  HpRatio: Single;
+  I, O, OrbitCount: Integer;
+  R, BossBar, BossFill, HpTrack, HpFill: TRectF;
+  LeafRect, EyeL, EyeR, CheekL, CheekR: TRectF;
+  HpRatio, CurRatio, BarHalfW, BarW, BarLeft, BarTop: Single;
+  OrbitDist, SatSize, Ang, Ox, Oy, MagRadius: Single;
+  DashStatus: string;
 begin
   Canvas.BeginScene;
   try
@@ -2241,13 +2245,13 @@ begin
       // 보스 HP 바
       if FEnemies[I].EnemyType = etBoss then
       begin
-        var BarHalfW := FEnemies[I].Radius + 12;
-        var BossBar := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), FEnemies[I].X + BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 10));
+        BarHalfW := FEnemies[I].Radius + 12;
+        BossBar := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), FEnemies[I].X + BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 10));
         Canvas.Fill.Color := $55000000;
         Canvas.FillRect(BossBar, 3, 3, [], 0.7);
 
-        var CurRatio := Max(0.0, Min(1.0, FEnemies[I].HP / FEnemies[I].MaxHP));
-        var BossFill := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), (FEnemies[I].X - BarHalfW) + (BarHalfW * 2) * CurRatio, FEnemies[I].Y - (FEnemies[I].Radius + 10));
+        CurRatio := Max(0.0, Min(1.0, FEnemies[I].HP / FEnemies[I].MaxHP));
+        BossFill := TRectF.Create(FEnemies[I].X - BarHalfW, FEnemies[I].Y - (FEnemies[I].Radius + 16), (FEnemies[I].X - BarHalfW) + (BarHalfW * 2) * CurRatio, FEnemies[I].Y - (FEnemies[I].Radius + 10));
         Canvas.Fill.Color := $FFFF4D6D;
         Canvas.FillRect(BossFill, 3, 3, [], 1.0);
       end;
@@ -2277,15 +2281,15 @@ begin
     // 6. 가디언 딸기 위성 그리기
     if FOrbitLevel > 0 then
     begin
-      var OrbitCount := FOrbitLevel;
-      var OrbitDist: Single := IfThen(FOrbitEvolved, 75.0, 65.0);
-      var SatSize: Single := IfThen(FOrbitEvolved, 13.0, 10.0);
+      OrbitCount := FOrbitLevel;
+      OrbitDist := IfThen(FOrbitEvolved, 75.0, 65.0);
+      SatSize := IfThen(FOrbitEvolved, 13.0, 10.0);
 
-      for var O := 0 to OrbitCount - 1 do
+      for O := 0 to OrbitCount - 1 do
       begin
-        var Ang := FOrbitAngle + (2 * Pi / OrbitCount) * O;
-        var Ox := FPlayerX + Cos(Ang) * OrbitDist;
-        var Oy := FPlayerY + Sin(Ang) * OrbitDist;
+        Ang := FOrbitAngle + (2 * Pi / OrbitCount) * O;
+        Ox := FPlayerX + Cos(Ang) * OrbitDist;
+        Oy := FPlayerY + Sin(Ang) * OrbitDist;
 
         R := TRectF.Create(Ox - SatSize, Oy - SatSize, Ox + SatSize, Oy + SatSize);
         if FOrbitEvolved then
@@ -2348,21 +2352,21 @@ begin
       else
       begin
         Canvas.Fill.Color := $FF52B788;
-        var LeafRect := TRectF.Create(FPlayerX - 6, FPlayerY - FPlayerRadius - 5, FPlayerX + 6, FPlayerY - FPlayerRadius + 2);
+        LeafRect := TRectF.Create(FPlayerX - 6, FPlayerY - FPlayerRadius - 5, FPlayerX + 6, FPlayerY - FPlayerRadius + 2);
         Canvas.FillEllipse(LeafRect, 1.0);
       end;
 
       // 귀여운 눈망울
       Canvas.Fill.Color := $FF4A3E3D;
-      var EyeL := TRectF.Create(FPlayerX - 6, FPlayerY - 4, FPlayerX - 2, FPlayerY);
-      var EyeR := TRectF.Create(FPlayerX + 2, FPlayerY - 4, FPlayerX + 6, FPlayerY);
+      EyeL := TRectF.Create(FPlayerX - 6, FPlayerY - 4, FPlayerX - 2, FPlayerY);
+      EyeR := TRectF.Create(FPlayerX + 2, FPlayerY - 4, FPlayerX + 6, FPlayerY);
       Canvas.FillEllipse(EyeL, 1.0);
       Canvas.FillEllipse(EyeR, 1.0);
 
       // 발그레한 핑크 볼
       Canvas.Fill.Color := $FFFFB3C1;
-      var CheekL := TRectF.Create(FPlayerX - 11, FPlayerY, FPlayerX - 7, FPlayerY + 3);
-      var CheekR := TRectF.Create(FPlayerX + 7, FPlayerY, FPlayerX + 11, FPlayerY + 3);
+      CheekL := TRectF.Create(FPlayerX - 11, FPlayerY, FPlayerX - 7, FPlayerY + 3);
+      CheekR := TRectF.Create(FPlayerX + 7, FPlayerY, FPlayerX + 11, FPlayerY + 3);
       Canvas.FillEllipse(CheekL, 0.8);
       Canvas.FillEllipse(CheekR, 0.8);
     end;
@@ -2371,14 +2375,14 @@ begin
     if FPlayerMaxHP > 0 then
     begin
       HpRatio := Max(0.0, Min(1.0, FPlayerHP / FPlayerMaxHP));
-      var BarW: Single := 36 + (FMaxHPLevel * 8);
-      var BarLeft: Single := FPlayerX - (BarW / 2);
-      var BarTop: Single := FPlayerY - FPlayerRadius - 14;
-      var HpTrack := TRectF.Create(BarLeft, BarTop, BarLeft + BarW, BarTop + 5);
+      BarW := 36 + (FMaxHPLevel * 8);
+      BarLeft := FPlayerX - (BarW / 2);
+      BarTop := FPlayerY - FPlayerRadius - 14;
+      HpTrack := TRectF.Create(BarLeft, BarTop, BarLeft + BarW, BarTop + 5);
       Canvas.Fill.Color := $55000000;
       Canvas.FillRect(HpTrack, 2.5, 2.5, [], 0.6);
 
-      var HpFill := TRectF.Create(BarLeft, BarTop, BarLeft + (BarW * HpRatio), BarTop + 5);
+      HpFill := TRectF.Create(BarLeft, BarTop, BarLeft + (BarW * HpRatio), BarTop + 5);
       if HpRatio > 0.4 then Canvas.Fill.Color := $FF52B788 else Canvas.Fill.Color := $FFFF4D6D;
       Canvas.FillRect(HpFill, 2.5, 2.5, [], 1.0);
     end;
@@ -2386,7 +2390,7 @@ begin
     // 자석 업그레이드 시 은은한 자석 흡수 범위 링 시각화
     if FMagnetLevel > 0 then
     begin
-      var MagRadius: Single := 60 + (FMagnetLevel * 45);
+      MagRadius := 60 + (FMagnetLevel * 45);
       Canvas.Stroke.Color := $28E09F3E; // 은은한 파스텔 골드 링
       Canvas.Stroke.Thickness := 1.5;
       Canvas.DrawEllipse(TRectF.Create(FPlayerX - MagRadius, FPlayerY - MagRadius, FPlayerX + MagRadius, FPlayerY + MagRadius), 0.5);
@@ -2422,7 +2426,6 @@ begin
     Canvas.Font.Size := 11;
     Canvas.Font.Style := [];
     Canvas.Fill.Color := $664A3E3D;
-    var DashStatus: string;
     if FDashCooldownTimer <= 0 then
       DashStatus := '💨 대시 준비완료 (Space / 우클릭)'
     else
