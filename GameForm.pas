@@ -28,16 +28,23 @@ type
   // 게임 진행 상태
   TGameState = (gsReady, gsPlaying, gsPaused, gsLevelUp, gsGameOver);
 
-  // 로그라이크 업그레이드 스킬 종류
+  // 캐릭터 종류 (4종 디저트 영웅)
+  TCharacterType = (ctStrawberry, ctEspresso, ctBunny, ctTomato);
+
+  // 로그라이크 업그레이드 스킬 종류 (기본 8종 + 최종 진화 4종)
   TUpgradeType = (
-    utSeedCount,       // 🍓 씨앗 뿅뿅포 (+1개 발사)
-    utAttackSpeed,     // ⚡ 공격 속도 (+20% 가속)
-    utOrbitStrawberry, // 🪐 가디언 딸기 위성 (+1개 추가)
-    utCoffeePulse,     // ☕ 에스프레소 파동 (360도 넉백 충격파)
-    utVitaminZap,      // ⚡ 비타민 번개 (적 정밀 타격)
-    utMoveSpeed,       // 👟 푹신한 토끼 덧신 (+15% 이동속도)
-    utMaxHPHeal,       // 💖 딸기 조각 케이크 (최대 체력 +25 & 즉시 회복)
-    utMagnetRadius     // 🧲 달콤한 자석 (보석 흡수 범위 +40%)
+    utSeedCount,          // 🍓 씨앗 뿅뿅포 (+1개 발사)
+    utAttackSpeed,        // ⚡ 공격 속도 (+20% 가속)
+    utOrbitStrawberry,    // 🪐 가디언 딸기 위성 (+1개 추가)
+    utCoffeePulse,        // ☕ 에스프레소 파동 (360도 넉백 충격파)
+    utVitaminZap,         // ⚡ 비타민 번개 (적 정밀 타격)
+    utMoveSpeed,          // 👟 푹신한 토끼 덧신 (+15% 이동속도)
+    utMaxHPHeal,          // 💖 딸기 조각 케이크 (최대 체력 +25 & 즉시 회복)
+    utMagnetRadius,       // 🧲 달콤한 자석 (보석 흡수 범위 +40%)
+    utEvoSeedGatling,     // ✨🍓 [진화] 메가 딸기 개틀링 (폭풍 탄막 연사)
+    utEvoGalacticOrbit,   // ✨🪐 [진화] 은하계 딸기 결계 (초거대 분쇄 궤도)
+    utEvoDarkRoast,       // ✨☕ [진화] 다크 로스트 허리케인 (화면 광역 흡입 넉백)
+    utEvoPlasmaZap        // ✨⚡ [진화] 메가 비타민 플라즈마 (연쇄 벼락 폭풍)
   );
 
   TUpgradeOption = record
@@ -73,8 +80,8 @@ type
     Pierce: Integer;
   end;
 
-  // 경험치 보석 / 아이템
-  TGemType = (gtGreen, gtBlue, gtPink, gtCake, gtMagnet);
+  // 경험치 보석 / 아이템 (보석, 케이크, 자석, 토마토 폭탄, 황금 보물상자)
+  TGemType = (gtGreen, gtBlue, gtPink, gtCake, gtMagnet, gtBomb, gtChest);
 
   TGem = record
     Active: Boolean;
@@ -211,6 +218,23 @@ type
     FAttackSpeedLevel: Integer;
     FAttackSpeedMultiplier: Single;
 
+    // 최종 무기 진화 (Evolved Weapons) 플래그
+    FSeedEvolved: Boolean;
+    FOrbitEvolved: Boolean;
+    FCoffeeEvolved: Boolean;
+    FVitaminEvolved: Boolean;
+
+    // 캐릭터 & 뽀모도로 수확 연동 & 부활
+    FSelectedChar: TCharacterType;
+    FTomatoHarvestCount: Integer;
+    FHasRevive: Boolean;
+    FReviveUsed: Boolean;
+
+    // 딸기 대시 (Dash) 시스템
+    FDashTimer: Single;
+    FDashCooldownTimer: Single;
+    FDashMaxCooldown: Single;
+
     // 엔티티 풀 (대량 몬스터 서바이벌 웨이브를 위한 대폭 확장)
     FEnemies: array[0..399] of TEnemy;
     FProjectiles: array[0..199] of TProjectile;
@@ -257,6 +281,11 @@ type
     procedure FireSeedGun;
     procedure TriggerCoffeePulse;
     procedure TriggerVitaminZap;
+    procedure PerformDash;
+    procedure TriggerTomatoBomb;
+    procedure OpenTreasureChest;
+    procedure SelectCharacter(const AChar: TCharacterType);
+    procedure LoadPomodoroHarvestData;
     procedure AddGem(const X, Y: Single; const AType: TGemType; const AExp: Integer);
     procedure AddFloatingText(const X, Y: Single; const AText: string; const ACol: TAlphaColor);
     procedure AddParticles(const X, Y: Single; const ACol: TAlphaColor; const ACount: Integer);
@@ -355,13 +384,26 @@ end;
 procedure TfrmGame.UpdateHUDLabels;
 var
   CurHP: Integer;
+  ReviveStr, CharIcon: string;
 begin
   CurHP := Max(0, Round(FPlayerHP));
+  if FHasRevive and (not FReviveUsed) then
+    ReviveStr := ' 👼'
+  else
+    ReviveStr := '';
+
+  case FSelectedChar of
+    ctStrawberry: CharIcon := '🍓';
+    ctEspresso:   CharIcon := '☕';
+    ctBunny:      CharIcon := '🐰';
+    ctTomato:     CharIcon := '🍅';
+  end;
+
   if (FPlayerLevel <> FLastDisplayLevel) or (CurHP <> FLastDisplayHP) then
   begin
     FLastDisplayLevel := FPlayerLevel;
     FLastDisplayHP := CurHP;
-    lblLevelBadge.Text := Format('Lv.%d 🌱  💖 %d/%d', [FPlayerLevel, CurHP, Round(FPlayerMaxHP)]);
+    lblLevelBadge.Text := Format('%s Lv.%d 💖 %d/%d%s', [CharIcon, FPlayerLevel, CurHP, Round(FPlayerMaxHP), ReviveStr]);
   end;
 
   if (FKills <> FLastDisplayKills) or (FStage <> FLastDisplayStage) or
@@ -428,6 +470,89 @@ end;
 { 게임 시작 및 리셋                                                            }
 { ============================================================================ }
 
+{ ============================================================================ }
+{ 뽀모도로 타이머 데이터 연동 & 캐릭터 선택                                     }
+{ ============================================================================ }
+
+procedure TfrmGame.LoadPomodoroHarvestData;
+var
+  Ini: TIniFile;
+  IniPath: string;
+begin
+  FTomatoHarvestCount := 0;
+  try
+    IniPath := ChangeFileExt(ParamStr(0), '_data.ini');
+    if FileExists(IniPath) then
+    begin
+      Ini := TIniFile.Create(IniPath);
+      try
+        FTomatoHarvestCount := Ini.ReadInteger('Stats', 'CompletedPomodoros', 0);
+      finally
+        Ini.Free;
+      end;
+    end;
+  except
+  end;
+end;
+
+procedure TfrmGame.SelectCharacter(const AChar: TCharacterType);
+begin
+  LoadPomodoroHarvestData;
+
+  case AChar of
+    ctEspresso:
+      if FTomatoHarvestCount < 2 then
+      begin
+        AddFloatingText(FPlayerX, FPlayerY - 30, '🔒 토마토 2개 수확 시 [에스프레소 빈] 해금!', $FFFF4D6D);
+        PlaySoundBeep(200, 150);
+        Exit;
+      end;
+    ctBunny:
+      if FTomatoHarvestCount < 4 then
+      begin
+        AddFloatingText(FPlayerX, FPlayerY - 30, '🔒 토마토 4개 수확 시 [바닐라 토끼] 해금!', $FFFF4D6D);
+        PlaySoundBeep(200, 150);
+        Exit;
+      end;
+    ctTomato:
+      if FTomatoHarvestCount < 6 then
+      begin
+        AddFloatingText(FPlayerX, FPlayerY - 30, '🔒 토마토 6개 수확 시 [탱탱 토마토] 해금!', $FFFF4D6D);
+        PlaySoundBeep(200, 150);
+        Exit;
+      end;
+  end;
+
+  FSelectedChar := AChar;
+  case FSelectedChar of
+    ctStrawberry: AddFloatingText(FPlayerX, FPlayerY - 30, '🍓 [딸기 공주] 선택! 밸런스 & 씨앗포 시작', $FFFF758F);
+    ctEspresso:   AddFloatingText(FPlayerX, FPlayerY - 30, '☕ [에스프레소 빈] 선택! 빠른 공속 & 파동 시작', $FFE09F3E);
+    ctBunny:      AddFloatingText(FPlayerX, FPlayerY - 30, '🐰 [바닐라 토끼] 선택! 신속 이동 & 쿨타임 단축', $FF52B788);
+    ctTomato:     AddFloatingText(FPlayerX, FPlayerY - 30, '🍅 [탱탱 토마토] 선택! 대용량 체력 & 위성 시작', $FFFF4D6D);
+  end;
+  PlaySoundBeep(880, 100);
+
+  // 캐릭터 변경 시 새 게임 적용
+  StartNewGame;
+end;
+
+procedure TfrmGame.PerformDash;
+begin
+  if (FGameState = gsPlaying) and (FDashCooldownTimer <= 0) then
+  begin
+    FDashTimer := 0.22;       // 0.22초 동안 광속 대시
+    FDashCooldownTimer := FDashMaxCooldown;
+    FInvincibleTimer := 0.35; // 대시 중 완전 무적
+    AddParticles(FPlayerX, FPlayerY, $FFFF758F, 12);
+    AddFloatingText(FPlayerX, FPlayerY - 25, '💨 슈웅! 대시!', $FFFF758F);
+    PlaySoundBeep(980, 80);
+  end;
+end;
+
+{ ============================================================================ }
+{ 게임 시작 및 리셋                                                            }
+{ ============================================================================ }
+
 procedure TfrmGame.StartGameSession;
 begin
   Show;
@@ -442,15 +567,13 @@ begin
   lytLevelUpModal.Visible := False;
   lytGameOverModal.Visible := False;
 
+  LoadPomodoroHarvestData;
+
   // 플레이어 기본 위치 (화면 중앙)
   FPlayerX := pbGame.Width / 2;
   FPlayerY := pbGame.Height / 2;
   FPlayerRadius := 18;
-  FPlayerMaxHP := 100;
-  FPlayerHP := 100;
-  FPlayerSpeed := 3.6;
   FPlayerLevel := 1;
-  FPlayerEXP := 0;
   FPlayerNextEXP := 10;
   FKills := 0;
   FSurvivalSeconds := 0;
@@ -462,8 +585,8 @@ begin
   FKeyDown := False;
   FMouseControlActive := False;
 
-  // 스킬 초기화 (씨앗 뿅뿅포 1단계 기본 제공)
-  FSeedLevel := 1;
+  // 모든 스킬 및 진화 플래그 초기화
+  FSeedLevel := 0;
   FSeedCooldownTimer := 0;
   FOrbitLevel := 0;
   FOrbitAngle := 0;
@@ -478,6 +601,61 @@ begin
   FMagnetLevel := 0;
   FAttackSpeedLevel := 0;
   FAttackSpeedMultiplier := 1.0;
+
+  FSeedEvolved := False;
+  FOrbitEvolved := False;
+  FCoffeeEvolved := False;
+  FVitaminEvolved := False;
+
+  // 대시 초기화
+  FDashTimer := 0;
+  FDashCooldownTimer := 0;
+  FDashMaxCooldown := 3.2;
+
+  // 캐릭터별 고유 스탯 및 시작 스킬 분기
+  case FSelectedChar of
+    ctStrawberry:
+      begin
+        FPlayerMaxHP := 100;
+        FPlayerHP := 100;
+        FPlayerSpeed := 3.6;
+        FSeedLevel := 1;
+      end;
+    ctEspresso:
+      begin
+        FPlayerMaxHP := 85;
+        FPlayerHP := 85;
+        FPlayerSpeed := 3.7;
+        FAttackSpeedLevel := 1;
+        FAttackSpeedMultiplier := 1.25;
+        FCoffeeLevel := 1;
+      end;
+    ctBunny:
+      begin
+        FPlayerMaxHP := 80;
+        FPlayerHP := 80;
+        FPlayerSpeed := 4.4;
+        FMoveSpeedLevel := 1;
+        FDashMaxCooldown := 1.8; // 토끼는 대시 쿨타임 초단축!
+        FSeedLevel := 1;
+      end;
+    ctTomato:
+      begin
+        FPlayerMaxHP := 160;
+        FPlayerHP := 160;
+        FPlayerSpeed := 3.2;
+        FMaxHPLevel := 1;
+        FOrbitLevel := 1;
+      end;
+  end;
+
+  // 뽀모도로 타이머 연동 보너스:
+  // 1. 토마토 4개 이상(일일 목표 달성)이면 '토마토 천사의 부활' 1회 기본 제공!
+  FHasRevive := (FTomatoHarvestCount >= 4);
+  FReviveUsed := False;
+
+  // 2. 수확한 토마토 1개당 보너스 시작 경험치 +15 EXP
+  FPlayerEXP := FTomatoHarvestCount * 15;
 
   FSpawnTimer := 0;
   FLastWaveTriggerSec := 0;
@@ -507,8 +685,11 @@ begin
   UpdateHUDLabels;
   lblSurvivalTime.Text := '00:00';
 
-  FStopwatch := TStopwatch.StartNew;
+  // 보너스 시작 EXP 레벨업 체크
+  if FPlayerEXP >= FPlayerNextEXP then
+    CheckLevelUp;
 
+  FStopwatch := TStopwatch.StartNew;
   GameTimer.Enabled := True;
 end;
 
@@ -523,7 +704,12 @@ begin
     vkRight, Ord('D'), Ord('d'): FKeyRight := True;
     vkUp, Ord('W'), Ord('w'): FKeyUp := True;
     vkDown, Ord('S'), Ord('s'): FKeyDown := True;
-    vkSpace, Ord('P'), Ord('p'): rectBtnPauseClick(Self);
+    vkSpace, vkShift: PerformDash; // Space나 Shift는 순간 대시!
+    Ord('P'), Ord('p'): rectBtnPauseClick(Self); // P키는 일시정지
+    Ord('1'): SelectCharacter(ctStrawberry);
+    Ord('2'): SelectCharacter(ctEspresso);
+    Ord('3'): SelectCharacter(ctBunny);
+    Ord('4'): SelectCharacter(ctTomato);
     vkEscape:
       if FGameState in [gsLevelUp, gsGameOver] then
         // 모달 상태 유지
@@ -549,6 +735,10 @@ begin
     FMouseControlActive := True;
     FMouseTargetX := X;
     FMouseTargetY := Y;
+  end
+  else if Button = TMouseButton.mbRight then
+  begin
+    PerformDash; // 마우스 우클릭으로도 순간 대시!
   end;
 end;
 
@@ -662,7 +852,20 @@ begin
     end;
   end;
 
+  // 대시 쿨타임 및 지속시간 업데이트
+  if FDashCooldownTimer > 0 then
+    FDashCooldownTimer := FDashCooldownTimer - DT;
+
   Spd := FPlayerSpeed * (1.0 + FMoveSpeedLevel * 0.20) * TimeScale;
+
+  if FDashTimer > 0 then
+  begin
+    FDashTimer := FDashTimer - DT;
+    Spd := Spd * 2.7; // 대시 중 이동 속도 2.7배 폭발적 증가!
+    if Random(2) = 0 then
+      AddParticles(FPlayerX, FPlayerY, $FFFF758F, 2);
+  end;
+
   FPlayerX := FPlayerX + MoveX * Spd;
   FPlayerY := FPlayerY + MoveY * Spd;
 
@@ -901,6 +1104,7 @@ begin
         etBoss:
           begin
             FBossActive := False;
+            AddGem(FEnemies[I].X, FEnemies[I].Y, gtChest, 0); // 🎁 황금 보물상자 100% 확정 드랍!
             AddGem(FEnemies[I].X - 25, FEnemies[I].Y, gtCake, 0); // 힐링 케이크
             AddGem(FEnemies[I].X + 25, FEnemies[I].Y, gtMagnet, 0); // 슈퍼 자석
             for var B := 1 to 8 do
@@ -938,9 +1142,14 @@ begin
           end;
         end;
 
-        // 3% 확률로 힐링 딸기 케이크 드랍
-        if Random(100) < 3 then
-          AddGem(FEnemies[I].X + 8, FEnemies[I].Y + 8, gtCake, 0);
+        // 아이템 무작위 드랍: 3% 케이크, 2.5% 토마토 폭탄, 0.5% 황금 보물상자
+        var Roll := Random(1000);
+        if Roll < 30 then
+          AddGem(FEnemies[I].X + 8, FEnemies[I].Y + 8, gtCake, 0)
+        else if Roll < 55 then
+          AddGem(FEnemies[I].X - 8, FEnemies[I].Y + 8, gtBomb, 0)
+        else if Roll < 60 then
+          AddGem(FEnemies[I].X, FEnemies[I].Y - 8, gtChest, 0);
       end;
 
       UpdateHUDLabels;
@@ -966,10 +1175,27 @@ begin
 
       if FPlayerHP <= 0 then
       begin
-        FPlayerHP := 0;
-        UpdateHUDLabels;
-        OnGameOver;
-        Exit;
+        // 뽀모도로 토마토 천사 부활 확인!
+        if FHasRevive and (not FReviveUsed) then
+        begin
+          FReviveUsed := True;
+          FPlayerHP := FPlayerMaxHP;
+          FInvincibleTimer := 2.5; // 2.5초간 긴 무적
+          AddFloatingText(FPlayerX, FPlayerY - 35, '👼 [토마토 천사] 100% 부활 성공! 힘내세요!', $FFFFD166);
+          AddParticles(FPlayerX, FPlayerY, $FFFFD166, 20);
+          PlaySoundBeep(523, 70);
+          PlaySoundBeep(659, 70);
+          PlaySoundBeep(784, 70);
+          PlaySoundBeep(1046, 220);
+          UpdateHUDLabels;
+        end
+        else
+        begin
+          FPlayerHP := 0;
+          UpdateHUDLabels;
+          OnGameOver;
+          Exit;
+        end;
       end;
     end;
   end;
@@ -996,6 +1222,10 @@ begin
       FGems[I].Active := False;
 
       case FGems[I].GemType of
+        gtBomb:
+          TriggerTomatoBomb;
+        gtChest:
+          OpenTreasureChest;
         gtCake:
           begin
             FPlayerHP := Min(FPlayerMaxHP, FPlayerHP + 30);
@@ -1157,30 +1387,60 @@ begin
   if NearestIdx = -1 then Exit;
 
   TargetAngle := ArcTan2(FEnemies[NearestIdx].Y - FPlayerY, FEnemies[NearestIdx].X - FPlayerX);
-  SeedCount := FSeedLevel + 1; // 레벨 1부터 2발 발사, 레벨당 +1발 증가!
-  ProjSpeed := 8.0 + (FAttackSpeedLevel * 1.5);
 
-  for I := 0 to SeedCount - 1 do
+  if FSeedEvolved then
   begin
-    if SeedCount = 1 then
-      SpreadAngle := TargetAngle
-    else
-      SpreadAngle := TargetAngle + (I - (SeedCount - 1) / 2) * 0.16;
-
-    for J := Low(FProjectiles) to High(FProjectiles) do
+    // ✨ 진화 무기: 메가 딸기 개틀링 (8발 전방위 고속 연사 탄막)
+    SeedCount := 8;
+    ProjSpeed := 12.0 + (FAttackSpeedLevel * 1.5);
+    for I := 0 to SeedCount - 1 do
     begin
-      if not FProjectiles[J].Active then
+      SpreadAngle := TargetAngle + (I - 3.5) * 0.22;
+      for J := Low(FProjectiles) to High(FProjectiles) do
       begin
-        FProjectiles[J].Active := True;
-        FProjectiles[J].X := FPlayerX;
-        FProjectiles[J].Y := FPlayerY;
-        FProjectiles[J].VX := Cos(SpreadAngle) * ProjSpeed;
-        FProjectiles[J].VY := Sin(SpreadAngle) * ProjSpeed;
-        FProjectiles[J].Radius := 5;
-        FProjectiles[J].LifeTime := 2.2;
-        FProjectiles[J].Damage := 18 + (FSeedLevel * 4) + (FAttackSpeedLevel * 3);
-        FProjectiles[J].Pierce := 1 + FSeedLevel; // 적을 관통하여 무더기로 꿰뚫음!
-        Break;
+        if not FProjectiles[J].Active then
+        begin
+          FProjectiles[J].Active := True;
+          FProjectiles[J].X := FPlayerX;
+          FProjectiles[J].Y := FPlayerY;
+          FProjectiles[J].VX := Cos(SpreadAngle) * ProjSpeed;
+          FProjectiles[J].VY := Sin(SpreadAngle) * ProjSpeed;
+          FProjectiles[J].Radius := 7;
+          FProjectiles[J].LifeTime := 2.5;
+          FProjectiles[J].Damage := 60 + (FAttackSpeedLevel * 6);
+          FProjectiles[J].Pierce := 25; // 25마리 관통!
+          Break;
+        end;
+      end;
+    end;
+  end
+  else
+  begin
+    SeedCount := FSeedLevel + 1; // 레벨 1부터 2발 발사, 레벨당 +1발 증가!
+    ProjSpeed := 8.0 + (FAttackSpeedLevel * 1.5);
+
+    for I := 0 to SeedCount - 1 do
+    begin
+      if SeedCount = 1 then
+        SpreadAngle := TargetAngle
+      else
+        SpreadAngle := TargetAngle + (I - (SeedCount - 1) / 2) * 0.16;
+
+      for J := Low(FProjectiles) to High(FProjectiles) do
+      begin
+        if not FProjectiles[J].Active then
+        begin
+          FProjectiles[J].Active := True;
+          FProjectiles[J].X := FPlayerX;
+          FProjectiles[J].Y := FPlayerY;
+          FProjectiles[J].VX := Cos(SpreadAngle) * ProjSpeed;
+          FProjectiles[J].VY := Sin(SpreadAngle) * ProjSpeed;
+          FProjectiles[J].Radius := 5;
+          FProjectiles[J].LifeTime := 2.2;
+          FProjectiles[J].Damage := 18 + (FSeedLevel * 4) + (FAttackSpeedLevel * 3);
+          FProjectiles[J].Pierce := 1 + FSeedLevel; // 적을 관통하여 무더기로 꿰뚫음!
+          Break;
+        end;
       end;
     end;
   end;
@@ -1191,10 +1451,22 @@ var
   I: Integer;
   Dist, PushAngle: Single;
   PulseRadius: Single;
+  PulseDmg: Single;
 begin
   FCoffeeWaveActive := True;
   FCoffeeWaveRadius := 10;
-  PulseRadius := 115 + FCoffeeLevel * 30;
+
+  if FCoffeeEvolved then
+  begin
+    // ✨ 진화 무기: 다크 로스트 허리케인 (화면 전체 230px 광역 흡입 및 폭발 넉백)
+    PulseRadius := 230;
+    PulseDmg := 110 + (FMoveSpeedLevel * 15);
+  end
+  else
+  begin
+    PulseRadius := 115 + FCoffeeLevel * 30;
+    PulseDmg := 35 + FCoffeeLevel * 15;
+  end;
 
   for I := Low(FEnemies) to High(FEnemies) do
   begin
@@ -1202,12 +1474,13 @@ begin
     Dist := Sqrt(Sqr(FEnemies[I].X - FPlayerX) + Sqr(FEnemies[I].Y - FPlayerY));
     if Dist < PulseRadius then
     begin
-      FEnemies[I].HP := FEnemies[I].HP - (35 + FCoffeeLevel * 15);
+      FEnemies[I].HP := FEnemies[I].HP - PulseDmg;
       FEnemies[I].FlashTimer := 0.15;
       PushAngle := ArcTan2(FEnemies[I].Y - FPlayerY, FEnemies[I].X - FPlayerX);
-      FEnemies[I].X := FEnemies[I].X + Cos(PushAngle) * 60;
-      FEnemies[I].Y := FEnemies[I].Y + Sin(PushAngle) * 60;
-      AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ☕', [35 + FCoffeeLevel * 15]), $FFE09F3E);
+      var PushForce: Single := IfThen(FCoffeeEvolved, 95.0, 60.0);
+      FEnemies[I].X := FEnemies[I].X + Cos(PushAngle) * PushForce;
+      FEnemies[I].Y := FEnemies[I].Y + Sin(PushAngle) * PushForce;
+      AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ☕', [Round(PulseDmg)]), $FFE09F3E);
     end;
   end;
 end;
@@ -1215,21 +1488,119 @@ end;
 procedure TfrmGame.TriggerVitaminZap;
 var
   I, TargetCount, Struck: Integer;
+  ZapDmg: Single;
 begin
-  TargetCount := 3 * FVitaminLevel; // 한 번에 다수의 적을 동시 강타!
-  Struck := 0;
+  if FVitaminEvolved then
+  begin
+    // ✨ 진화 무기: 메가 비타민 플라즈마 (동시 8마리 연쇄 벼락 폭풍)
+    TargetCount := 9;
+    ZapDmg := 130 + (FMagnetLevel * 15);
+  end
+  else
+  begin
+    TargetCount := 3 * FVitaminLevel;
+    ZapDmg := 45 + FVitaminLevel * 15;
+  end;
 
+  Struck := 0;
   for I := Low(FEnemies) to High(FEnemies) do
   begin
     if not FEnemies[I].Active then Continue;
-    FEnemies[I].HP := FEnemies[I].HP - (45 + FVitaminLevel * 15);
+    FEnemies[I].HP := FEnemies[I].HP - ZapDmg;
     FEnemies[I].FlashTimer := 0.2;
-    AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ⚡', [45 + FVitaminLevel * 15]), $FFFFD166);
+    AddFloatingText(FEnemies[I].X, FEnemies[I].Y - 14, Format('-%d ⚡', [Round(ZapDmg)]), $FFFFD166);
     AddParticles(FEnemies[I].X, FEnemies[I].Y, $FFFFD166, 8);
 
     Inc(Struck);
     if Struck >= TargetCount then Break;
   end;
+end;
+
+procedure TfrmGame.TriggerTomatoBomb;
+var
+  I: Integer;
+begin
+  AddFloatingText(FPlayerX, FPlayerY - 30, '🍅 콰아아앙! 토마토 팡팡 폭탄!', $FFFF3333);
+  PlaySoundBeep(180, 250);
+  AddParticles(pbGame.Width / 2, pbGame.Height / 2, $FFFF4D6D, 35);
+
+  // 화면 내의 모든 몬스터에게 대량 폭탄 피해
+  for I := Low(FEnemies) to High(FEnemies) do
+  begin
+    if not FEnemies[I].Active then Continue;
+    if FEnemies[I].EnemyType = etBoss then
+      FEnemies[I].HP := FEnemies[I].HP - 400
+    else
+      FEnemies[I].HP := 0; // 일반 몬스터 일망타진!
+  end;
+end;
+
+procedure TfrmGame.OpenTreasureChest;
+var
+  JackpotRoll, UpgradesCount: Integer;
+  CanEvolve: Boolean;
+  EvoCandidate: TUpgradeType;
+begin
+  CanEvolve := False;
+  EvoCandidate := utSeedCount;
+
+  // 진화 조건 체크: 기본 스킬 만렙(5) + 짝꿍 패시브 보유 시 즉시 무기 진화!
+  if (not FSeedEvolved) and (FSeedLevel >= 5) and (FAttackSpeedLevel >= 1) then
+  begin
+    CanEvolve := True;
+    EvoCandidate := utEvoSeedGatling;
+  end
+  else if (not FOrbitEvolved) and (FOrbitLevel >= 5) and (FMaxHPLevel >= 1) then
+  begin
+    CanEvolve := True;
+    EvoCandidate := utEvoGalacticOrbit;
+  end
+  else if (not FCoffeeEvolved) and (FCoffeeLevel >= 5) and (FMoveSpeedLevel >= 1) then
+  begin
+    CanEvolve := True;
+    EvoCandidate := utEvoDarkRoast;
+  end
+  else if (not FVitaminEvolved) and (FVitaminLevel >= 5) and (FMagnetLevel >= 1) then
+  begin
+    CanEvolve := True;
+    EvoCandidate := utEvoPlasmaZap;
+  end;
+
+  if CanEvolve then
+  begin
+    ApplyUpgrade(EvoCandidate);
+    AddFloatingText(FPlayerX, FPlayerY - 45, '✨ [보물상자 잭팟!] 궁극 무기 진화 달성! ✨', $FFFFD166);
+    PlaySoundBeep(523, 70);
+    PlaySoundBeep(659, 70);
+    PlaySoundBeep(784, 70);
+    PlaySoundBeep(1046, 200);
+    Exit;
+  end;
+
+  // 1~3개 스킬 잭팟 롤링 (60% 1개, 30% 2개, 10% 3개)
+  JackpotRoll := Random(100);
+  if JackpotRoll < 60 then
+    UpgradesCount := 1
+  else if JackpotRoll < 90 then
+    UpgradesCount := 2
+  else
+    UpgradesCount := 3;
+
+  for var K := 1 to UpgradesCount do
+  begin
+    var RandUp: TUpgradeType := TUpgradeType(Random(8));
+    ApplyUpgrade(RandUp);
+  end;
+
+  if UpgradesCount = 3 then
+    AddFloatingText(FPlayerX, FPlayerY - 45, '🎰 [대박 잭팟! 3연타!] 스킬 3종 즉시 강화!', $FFFFD166)
+  else if UpgradesCount = 2 then
+    AddFloatingText(FPlayerX, FPlayerY - 45, '🎁 [더블 보너스!] 스킬 2종 동시 강화!', $FFFFD166)
+  else
+    AddFloatingText(FPlayerX, FPlayerY - 45, '🎁 [보물 상자 개봉!] 스킬 무료 강화!', $FFFFD166);
+
+  PlaySoundBeep(784, 100);
+  PlaySoundBeep(1046, 180);
 end;
 
 { ============================================================================ }
@@ -1445,22 +1816,74 @@ var
           else
             Result.Badge := Format('Lv.%d', [FMagnetLevel + 1]);
         end;
+      utEvoSeedGatling:
+        begin
+          Result.Icon := '✨🍓';
+          Result.Title := '메가 딸기 개틀링';
+          Result.Desc := '✨ [최종 진화] 사방으로 쉬지 않고 쏟아지는 8발 전방위 고속 연사 탄막!';
+          Result.Badge := 'EVOLVED!';
+        end;
+      utEvoGalacticOrbit:
+        begin
+          Result.Icon := '✨🪐';
+          Result.Title := '은하계 딸기 결계';
+          Result.Desc := '✨ [최종 진화] 플레이어를 감싸는 초거대 7개 위성 궤도 & 닿는 적 분쇄!';
+          Result.Badge := 'EVOLVED!';
+        end;
+      utEvoDarkRoast:
+        begin
+          Result.Icon := '✨☕';
+          Result.Title := '다크 로스트 허리케인';
+          Result.Desc := '✨ [최종 진화] 230px 초대형 회오리로 적을 빨아들인 뒤 폭발 넉백!';
+          Result.Badge := 'EVOLVED!';
+        end;
+      utEvoPlasmaZap:
+        begin
+          Result.Icon := '✨⚡';
+          Result.Title := '메가 비타민 플라즈마';
+          Result.Desc := '✨ [최종 진화] 화면 내 9마리의 적을 동시에 타격하는 연쇄 벼락 폭풍!';
+          Result.Badge := 'EVOLVED!';
+        end;
     end;
   end;
 
 begin
   FGameState := gsLevelUp;
 
-  // 전체 업그레이드 풀 구성
-  SetLength(Pool, 8);
-  Pool[0] := utSeedCount;
-  Pool[1] := utAttackSpeed;
-  Pool[2] := utOrbitStrawberry;
-  Pool[3] := utCoffeePulse;
-  Pool[4] := utVitaminZap;
-  Pool[5] := utMoveSpeed;
-  Pool[6] := utMaxHPHeal;
-  Pool[7] := utMagnetRadius;
+  // 전체 업그레이드 풀 구성 (진화 조건 충족 시 진화 무기 우선 후보 편입)
+  SetLength(Pool, 0);
+
+  if (not FSeedEvolved) and (FSeedLevel >= 5) and (FAttackSpeedLevel >= 1) then
+  begin
+    SetLength(Pool, Length(Pool) + 1);
+    Pool[High(Pool)] := utEvoSeedGatling;
+  end;
+  if (not FOrbitEvolved) and (FOrbitLevel >= 5) and (FMaxHPLevel >= 1) then
+  begin
+    SetLength(Pool, Length(Pool) + 1);
+    Pool[High(Pool)] := utEvoGalacticOrbit;
+  end;
+  if (not FCoffeeEvolved) and (FCoffeeLevel >= 5) and (FMoveSpeedLevel >= 1) then
+  begin
+    SetLength(Pool, Length(Pool) + 1);
+    Pool[High(Pool)] := utEvoDarkRoast;
+  end;
+  if (not FVitaminEvolved) and (FVitaminLevel >= 5) and (FMagnetLevel >= 1) then
+  begin
+    SetLength(Pool, Length(Pool) + 1);
+    Pool[High(Pool)] := utEvoPlasmaZap;
+  end;
+
+  // 일반 스킬 추가
+  var BaseSkills: array[0..7] of TUpgradeType := (
+    utSeedCount, utAttackSpeed, utOrbitStrawberry, utCoffeePulse,
+    utVitaminZap, utMoveSpeed, utMaxHPHeal, utMagnetRadius
+  );
+  for var B := 0 to 7 do
+  begin
+    SetLength(Pool, Length(Pool) + 1);
+    Pool[High(Pool)] := BaseSkills[B];
+  end;
 
   // 중복 없는 3가지 랜덤 선택
   for I := 1 to 3 do
@@ -1507,6 +1930,31 @@ end;
 procedure TfrmGame.ApplyUpgrade(const AType: TUpgradeType);
 begin
   case AType of
+    utEvoSeedGatling:
+      begin
+        FSeedEvolved := True;
+        AddFloatingText(FPlayerX, FPlayerY - 32, '✨ [진화] 메가 딸기 개틀링 완성!', $FFFFD166);
+        PlaySoundBeep(1046, 200);
+      end;
+    utEvoGalacticOrbit:
+      begin
+        FOrbitEvolved := True;
+        FOrbitLevel := 7; // 위성 7개 결계
+        AddFloatingText(FPlayerX, FPlayerY - 32, '✨ [진화] 은하계 딸기 결계 완성!', $FFFFD166);
+        PlaySoundBeep(1046, 200);
+      end;
+    utEvoDarkRoast:
+      begin
+        FCoffeeEvolved := True;
+        AddFloatingText(FPlayerX, FPlayerY - 32, '✨ [진화] 다크 로스트 허리케인 완성!', $FFFFD166);
+        PlaySoundBeep(1046, 200);
+      end;
+    utEvoPlasmaZap:
+      begin
+        FVitaminEvolved := True;
+        AddFloatingText(FPlayerX, FPlayerY - 32, '✨ [진화] 메가 비타민 플라즈마 완성!', $FFFFD166);
+        PlaySoundBeep(1046, 200);
+      end;
     utSeedCount:
       begin
         Inc(FSeedLevel);
@@ -1696,6 +2144,24 @@ begin
       );
 
       case FGems[I].GemType of
+        gtBomb:
+          begin
+            Canvas.Fill.Color := $FFFF3333; // 붉은 토마토 폭탄
+            Canvas.FillEllipse(R, 1.0);
+            Canvas.Stroke.Color := $FFFFFFFF;
+            Canvas.Stroke.Thickness := 2.0;
+            Canvas.DrawEllipse(R, 1.0);
+            Canvas.Fill.Color := $FF2D6A4F;
+            Canvas.FillRect(TRectF.Create(FGems[I].X - 2, FGems[I].Y - FGems[I].Radius - 3, FGems[I].X + 2, FGems[I].Y - FGems[I].Radius + 2), 1, 1, [], 1.0);
+          end;
+        gtChest:
+          begin
+            Canvas.Fill.Color := $FFFFD166; // 빛나는 황금 보물상자
+            Canvas.FillRect(R, 2.5, 2.5, [], 1.0);
+            Canvas.Stroke.Color := $FFFFFFFF;
+            Canvas.Stroke.Thickness := 2.0;
+            Canvas.DrawRect(R, 2.5, 2.5, [], 1.0);
+          end;
         gtCake:
           begin
             Canvas.Fill.Color := $FFFF758F;
@@ -1788,9 +2254,6 @@ begin
     end;
 
     // 5. 투사체(씨앗) 그리기
-    Canvas.Fill.Color := $FFFF758F;
-    Canvas.Stroke.Color := $FFFFFFFF;
-    Canvas.Stroke.Thickness := 1.5;
     for I := Low(FProjectiles) to High(FProjectiles) do
     begin
       if not FProjectiles[I].Active then Continue;
@@ -1800,6 +2263,13 @@ begin
         FProjectiles[I].X + FProjectiles[I].Radius,
         FProjectiles[I].Y + FProjectiles[I].Radius
       );
+      if FSeedEvolved then
+        Canvas.Fill.Color := $FFFFD166 // 진화 개틀링: 황금빛 탄막
+      else
+        Canvas.Fill.Color := $FFFF758F;
+
+      Canvas.Stroke.Color := $FFFFFFFF;
+      Canvas.Stroke.Thickness := 1.5;
       Canvas.FillEllipse(R, 1.0);
       Canvas.DrawEllipse(R, 1.0);
     end;
@@ -1808,15 +2278,21 @@ begin
     if FOrbitLevel > 0 then
     begin
       var OrbitCount := FOrbitLevel;
-      var OrbitDist: Single := 65;
+      var OrbitDist: Single := IfThen(FOrbitEvolved, 75.0, 65.0);
+      var SatSize: Single := IfThen(FOrbitEvolved, 13.0, 10.0);
+
       for var O := 0 to OrbitCount - 1 do
       begin
         var Ang := FOrbitAngle + (2 * Pi / OrbitCount) * O;
         var Ox := FPlayerX + Cos(Ang) * OrbitDist;
         var Oy := FPlayerY + Sin(Ang) * OrbitDist;
 
-        R := TRectF.Create(Ox - 10, Oy - 10, Ox + 10, Oy + 10);
-        Canvas.Fill.Color := $FFFF758F;
+        R := TRectF.Create(Ox - SatSize, Oy - SatSize, Ox + SatSize, Oy + SatSize);
+        if FOrbitEvolved then
+          Canvas.Fill.Color := $FFFFD166 // 은하계 결계: 눈부신 골드 & 핑크
+        else
+          Canvas.Fill.Color := $FFFF758F;
+
         Canvas.FillEllipse(R, 1.0);
         Canvas.Stroke.Color := $FFFFFFFF;
         Canvas.Stroke.Thickness := 2.0;
@@ -1824,7 +2300,7 @@ begin
       end;
     end;
 
-    // 7. 플레이어(아기 토마토) 그리기
+    // 7. 플레이어 그리기
     R := TRectF.Create(
       FPlayerX - FPlayerRadius,
       FPlayerY - FPlayerRadius,
@@ -1832,20 +2308,49 @@ begin
       FPlayerY + FPlayerRadius
     );
 
+    // 대시 중 잔상 오라 또는 대시 준비 완료 발밑 링
+    if FDashTimer > 0 then
+    begin
+      Canvas.Stroke.Color := $AAFF758F;
+      Canvas.Stroke.Thickness := 3.0;
+      Canvas.DrawEllipse(TRectF.Create(FPlayerX - FPlayerRadius - 6, FPlayerY - FPlayerRadius - 6, FPlayerX + FPlayerRadius + 6, FPlayerY + FPlayerRadius + 6), 0.8);
+    end
+    else if FDashCooldownTimer <= 0 then
+    begin
+      Canvas.Stroke.Color := $4452B788;
+      Canvas.Stroke.Thickness := 1.8;
+      Canvas.DrawEllipse(TRectF.Create(FPlayerX - 16, FPlayerY + FPlayerRadius - 2, FPlayerX + 16, FPlayerY + FPlayerRadius + 6), 0.6);
+    end;
+
     // 무적 시간 깜빡임
     if (FInvincibleTimer <= 0) or ((Trunc(FInvincibleTimer * 20) mod 2) = 0) then
     begin
-      // 토마토 몸통 (상큼한 딸기 핑크)
-      Canvas.Fill.Color := $FFFF758F;
+      // 캐릭터별 고유 바디 컬러
+      case FSelectedChar of
+        ctStrawberry: Canvas.Fill.Color := $FFFF758F; // 딸기 핑크
+        ctEspresso:   Canvas.Fill.Color := $FF6F4E37; // 딥 에스프레소 브라운
+        ctBunny:      Canvas.Fill.Color := $FFFFFAF0; // 부드러운 바닐라 크림 화이트
+        ctTomato:     Canvas.Fill.Color := $FFFF4D6D; // 선명한 토마토 레드
+      end;
+
       Canvas.FillEllipse(R, 1.0);
       Canvas.Stroke.Color := $FFFFFFFF;
       Canvas.Stroke.Thickness := 2.5;
       Canvas.DrawEllipse(R, 1.0);
 
-      // 머리 위 초록 새싹 꼭지
-      Canvas.Fill.Color := $FF52B788;
-      var LeafRect := TRectF.Create(FPlayerX - 6, FPlayerY - FPlayerRadius - 5, FPlayerX + 6, FPlayerY - FPlayerRadius + 2);
-      Canvas.FillEllipse(LeafRect, 1.0);
+      // 머리 위 장식 (토끼는 귀, 딸기/토마토는 꼭지, 에스프레소는 크레마)
+      if FSelectedChar = ctBunny then
+      begin
+        Canvas.Fill.Color := $FFFFB3C1;
+        Canvas.FillEllipse(TRectF.Create(FPlayerX - 9, FPlayerY - FPlayerRadius - 10, FPlayerX - 3, FPlayerY - FPlayerRadius + 2), 1.0);
+        Canvas.FillEllipse(TRectF.Create(FPlayerX + 3, FPlayerY - FPlayerRadius - 10, FPlayerX + 9, FPlayerY - FPlayerRadius + 2), 1.0);
+      end
+      else
+      begin
+        Canvas.Fill.Color := $FF52B788;
+        var LeafRect := TRectF.Create(FPlayerX - 6, FPlayerY - FPlayerRadius - 5, FPlayerX + 6, FPlayerY - FPlayerRadius + 2);
+        Canvas.FillEllipse(LeafRect, 1.0);
+      end;
 
       // 귀여운 눈망울
       Canvas.Fill.Color := $FF4A3E3D;
@@ -1913,7 +2418,23 @@ begin
       Canvas.FillText(R, FFloatingTexts[I].Text, False, FFloatingTexts[I].LifeTime / FFloatingTexts[I].MaxLife, [], TTextAlign.Center, TTextAlign.Center);
     end;
 
-    // 10. 일시정지 오버레이 표시
+    // 10. 하단 컨트롤 팁 및 대시 상태 표시
+    Canvas.Font.Size := 11;
+    Canvas.Font.Style := [];
+    Canvas.Fill.Color := $664A3E3D;
+    var DashStatus: string;
+    if FDashCooldownTimer <= 0 then
+      DashStatus := '💨 대시 준비완료 (Space / 우클릭)'
+    else
+      DashStatus := Format('⏳ 대시 쿨타임 (%.1fs)', [FDashCooldownTimer]);
+
+    Canvas.FillText(
+      TRectF.Create(14, pbGame.Height - 24, pbGame.Width - 14, pbGame.Height - 4),
+      Format('%s  |  [1~4: 캐릭터 선택]', [DashStatus]),
+      False, 0.75, [], TTextAlign.Leading, TTextAlign.Center
+    );
+
+    // 11. 일시정지 오버레이 표시
     if FGameState = gsPaused then
     begin
       Canvas.Fill.Color := $88241E30;
