@@ -1,4 +1,4 @@
-unit GameForm;
+﻿unit GameForm;
 
 interface
 
